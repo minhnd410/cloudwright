@@ -1,0 +1,12 @@
+# Cloudflare Pages — direct upload deployment.
+#
+#   npx wrangler pages project create cloudwright --production-branch main
+#   npm run deploy
+#
+# Connecting a Git repository instead is usually better: set the build command
+# to `npm run build` and the output directory to `dist`, and Cloudflare will
+# build every push and give every branch a preview URL.
+
+name = "cloudwright"
+compatibility_date = "2026-09-15"
+pages_build_output_dir = "dist"
