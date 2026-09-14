@@ -11,6 +11,7 @@ import type { CwEdge, CwNode } from '@/store/types'
 import { RejectionToast } from './RejectionToast'
 import { CanvasControls } from './controls/CanvasControls'
 import { CanvasEmptyState } from './CanvasEmptyState'
+import { NodeHoverCard, type HoverTarget } from './NodeHoverCard'
 import { useMission } from '@/store/missionStore'
 
 /** Width of the mission objective panel, used to offset the initial framing. */
@@ -25,6 +26,8 @@ export function Canvas() {
   const wrapper = useRef<HTMLDivElement>(null)
   const { screenToFlowPosition, getIntersectingNodes, fitView, getViewport, setViewport } = useReactFlow<CwNode, CwEdge>()
   const [dropTarget, setDropTarget] = useState<string | null>(null)
+  const [hover, setHover] = useState<HoverTarget | null>(null)
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const nodes = useGame((s) => s.nodes)
   const edges = useGame((s) => s.edges)
@@ -121,6 +124,7 @@ export function Canvas() {
 
   const onNodeDrag: OnNodeDrag<CwNode> = useCallback(
     (_, node) => {
+      setHover(null)
       if (node.type === 'container') return
       const hits = getIntersectingNodes(node).filter(
         (n) => n.type === 'container' && n.id !== node.parentId && canDropInto(n.data.defId, node.data.defId),
@@ -156,6 +160,28 @@ export function Canvas() {
 
   const onNodeClick: NodeMouseHandler<CwNode> = useCallback((_, node) => select(node.id), [select])
 
+  // A short delay keeps the card from flashing as the pointer crosses the canvas.
+  const onNodeMouseEnter: NodeMouseHandler<CwNode> = useCallback((event, node) => {
+    if (node.type === 'container') return
+    const bounds = wrapper.current?.getBoundingClientRect()
+    const rect = (event.currentTarget as HTMLElement | null)?.getBoundingClientRect()
+    if (!bounds || !rect) return
+    const position = {
+      nodeId: node.id,
+      left: rect.left - bounds.left,
+      right: rect.right - bounds.left,
+      top: rect.top - bounds.top,
+      width: bounds.width,
+    }
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    hoverTimer.current = setTimeout(() => setHover(position), 420)
+  }, [])
+
+  const onNodeMouseLeave: NodeMouseHandler<CwNode> = useCallback(() => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    setHover(null)
+  }, [])
+
   const styledNodes = dropTarget
     ? nodes.map((n) => (n.id === dropTarget ? { ...n, className: 'cw-drop-target' } : n))
     : nodes
@@ -174,6 +200,8 @@ export function Canvas() {
         onNodeClick={onNodeClick}
         onNodeDrag={onNodeDrag}
         onNodeDragStop={onNodeDragStop}
+        onNodeMouseEnter={onNodeMouseEnter}
+        onNodeMouseLeave={onNodeMouseLeave}
         onEdgeClick={(_, edge) => select(null, edge.id)}
         onPaneClick={() => select(null, null)}
         proOptions={PRO_OPTIONS}
@@ -200,6 +228,7 @@ export function Canvas() {
         />
       </ReactFlow>
 
+      {hover && <NodeHoverCard target={hover} />}
       {nodes.length === 0 && <CanvasEmptyState />}
       <CanvasControls />
       <RejectionToast />

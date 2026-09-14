@@ -34,6 +34,13 @@ export interface RejectedConnection {
 
 export type SimSpeed = 0 | 1 | 2 | 4
 
+interface Snapshot {
+  nodes: CwNode[]
+  edges: CwEdge[]
+}
+
+const MAX_HISTORY_DEPTH = 60
+
 export interface GameState {
   // ── Diagram ──
   name: string
@@ -56,6 +63,12 @@ export interface GameState {
   findings: Finding[]
   score: number
 
+  // ── History ──
+  past: Snapshot[]
+  future: Snapshot[]
+  canUndo: boolean
+  canRedo: boolean
+
   // ── Transient UI ──
   rejected: RejectedConnection | null
   hoveredNodeId: string | null
@@ -63,6 +76,12 @@ export interface GameState {
   fitSignal: number
 
   // ── Actions ──
+  /** Records the current diagram so the next change can be undone. */
+  commit: () => void
+  undo: () => void
+  redo: () => void
+  duplicateNode: (nodeId: string) => void
+
   addNode: (defId: string, position: { x: number; y: number }, parentId?: string) => string
   removeNodes: (ids: string[]) => void
   onNodesChange: (changes: NodeChange<CwNode>[]) => void
@@ -99,6 +118,9 @@ export interface GameState {
 
 let nodeSeq = 1
 const nextNodeId = () => `n${nodeSeq++}`
+
+/** Coalesces rapid edits to one property into a single undo step. */
+let lastPropEdit = { key: '', at: 0 }
 
 function emptyHistory(): MetricHistory {
   return { demand: [], served: [], errorRate: [], p95: [], cost: [] }
@@ -137,13 +159,83 @@ export const useGame = create<GameState>((set, get) => ({
   findings: [],
   score: 100,
 
+  past: [],
+  future: [],
+  canUndo: false,
+  canRedo: false,
+
   rejected: null,
   hoveredNodeId: null,
   fitSignal: 0,
 
+  // ── History ───────────────────────────────────────────────────────────────
+
+  commit: () => {
+    set((s) => {
+      const past = [...s.past, { nodes: s.nodes, edges: s.edges }]
+      return {
+        past: past.length > MAX_HISTORY_DEPTH ? past.slice(past.length - MAX_HISTORY_DEPTH) : past,
+        future: [],
+        canUndo: true,
+        canRedo: false,
+      }
+    })
+  },
+
+  undo: () => {
+    const { past, nodes, edges } = get()
+    const previous = past[past.length - 1]
+    if (!previous) return
+    set((s) => ({
+      nodes: previous.nodes,
+      edges: previous.edges,
+      past: past.slice(0, -1),
+      future: [{ nodes, edges }, ...s.future].slice(0, MAX_HISTORY_DEPTH),
+      canUndo: past.length > 1,
+      canRedo: true,
+      selectedNodeId: null,
+      selectedEdgeId: null,
+    }))
+    get().runReview()
+  },
+
+  redo: () => {
+    const { future, nodes, edges } = get()
+    const next = future[0]
+    if (!next) return
+    set((s) => ({
+      nodes: next.nodes,
+      edges: next.edges,
+      past: [...s.past, { nodes, edges }].slice(-MAX_HISTORY_DEPTH),
+      future: future.slice(1),
+      canUndo: true,
+      canRedo: future.length > 1,
+      selectedNodeId: null,
+      selectedEdgeId: null,
+    }))
+    get().runReview()
+  },
+
+  duplicateNode: (nodeId) => {
+    const source = get().nodes.find((n) => n.id === nodeId)
+    if (!source) return
+    get().commit()
+    const id = nextNodeId()
+    const copy: CwNode = {
+      ...source,
+      id,
+      selected: false,
+      position: { x: source.position.x + 40, y: source.position.y + 40 },
+      data: { ...source.data, props: { ...source.data.props } },
+    }
+    set((s) => ({ nodes: [...s.nodes, copy], selectedNodeId: id, selectedEdgeId: null }))
+    get().runReview()
+  },
+
   // ── Diagram mutation ──────────────────────────────────────────────────────
 
   addNode: (defId, position, parentId) => {
+    get().commit()
     const def = requireResource(defId)
     const id = nextNodeId()
     const node: CwNode = {
@@ -165,6 +257,7 @@ export const useGame = create<GameState>((set, get) => ({
   },
 
   removeNodes: (ids) => {
+    get().commit()
     const set0 = new Set(ids)
     set((s) => ({
       nodes: s.nodes.filter((n) => !set0.has(n.id) && !(n.parentId && set0.has(n.parentId))),
@@ -176,11 +269,13 @@ export const useGame = create<GameState>((set, get) => ({
   },
 
   onNodesChange: (changes) => {
+    if (changes.some((c) => c.type === 'remove')) get().commit()
     set((s) => ({ nodes: applyNodeChanges(changes, s.nodes) }))
     if (changes.some((c) => c.type === 'remove' || c.type === 'add')) get().runReview()
   },
 
   onEdgesChange: (changes) => {
+    if (changes.some((c) => c.type === 'remove')) get().commit()
     set((s) => ({ edges: applyEdgeChanges(changes, s.edges) }))
     if (changes.some((c) => c.type === 'remove')) get().runReview()
   },
@@ -246,6 +341,7 @@ export const useGame = create<GameState>((set, get) => ({
       return
     }
 
+    get().commit()
     const data: CwEdgeData = { flow: verdict.primary, flows: verdict.flows }
     set((s) => ({
       edges: addEdge({ ...connection, type: 'flow', data, animated: false }, s.edges) as CwEdge[],
@@ -260,6 +356,11 @@ export const useGame = create<GameState>((set, get) => ({
   setHovered: (nodeId) => set({ hoveredNodeId: nodeId }),
 
   setProp: (nodeId, key, value) => {
+    // One undo step per burst of edits to the same setting, so dragging a
+    // slider does not fill the history with sixty intermediate values.
+    const stamp = `${nodeId}:${key}`
+    if (stamp !== lastPropEdit.key || Date.now() - lastPropEdit.at > 900) get().commit()
+    lastPropEdit = { key: stamp, at: Date.now() }
     set((s) => ({
       nodes: s.nodes.map((n) =>
         n.id === nodeId ? { ...n, data: { ...n.data, props: { ...n.data.props, [key]: value } } } : n,
@@ -425,6 +526,7 @@ export const useGame = create<GameState>((set, get) => ({
       selectedNodeId: null, selectedEdgeId: null,
       sim: null, incidents: [], events: [], history: emptyHistory(), speed: 0,
       fitSignal: s.fitSignal + 1,
+      past: [], future: [], canUndo: false, canRedo: false,
     }))
     get().runReview()
   },
@@ -436,6 +538,7 @@ export const useGame = create<GameState>((set, get) => ({
       selectedNodeId: null, selectedEdgeId: null,
       sim: null, incidents: [], events: [], history: emptyHistory(), speed: 0,
       findings: [], score: 100,
+      past: [], future: [], canUndo: false, canRedo: false,
     })
   },
 

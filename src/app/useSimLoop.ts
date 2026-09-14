@@ -32,17 +32,51 @@ export function useAutosave() {
 }
 
 /** Keyboard shortcuts that make the canvas feel like a real tool. */
+export interface Shortcut {
+  keys: string
+  action: string
+}
+
+/** Shown in the help popover, and the single description of what is bound. */
+export const SHORTCUTS: Shortcut[] = [
+  { keys: 'Space', action: 'Play or pause the simulation' },
+  { keys: 'R', action: 'Reset the simulation' },
+  { keys: 'X', action: 'Break something at random' },
+  { keys: '⌘Z / Ctrl+Z', action: 'Undo' },
+  { keys: '⇧⌘Z / Ctrl+Y', action: 'Redo' },
+  { keys: '⌘D / Ctrl+D', action: 'Duplicate the selected resource' },
+  { keys: 'Delete', action: 'Remove the selection' },
+  { keys: 'Esc', action: 'Deselect and dismiss' },
+]
+
 export function useShortcuts() {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return
       if (target?.isContentEditable) return
-      // Space already activates a focused button or link; do not also fire here.
-      if (event.key === ' ' && target?.closest('button, a, [role="tab"]')) return
-      if (event.metaKey || event.ctrlKey) return
 
       const store = useGame.getState()
+
+      if (event.metaKey || event.ctrlKey) {
+        const key = event.key.toLowerCase()
+        if (key === 'z') {
+          event.preventDefault()
+          if (event.shiftKey) store.redo()
+          else store.undo()
+        } else if (key === 'y') {
+          event.preventDefault()
+          store.redo()
+        } else if (key === 'd' && store.selectedNodeId) {
+          event.preventDefault()
+          store.duplicateNode(store.selectedNodeId)
+        }
+        return
+      }
+
+      // Space already activates a focused button or link; do not fire twice.
+      if (event.key === ' ' && target?.closest('button, a, [role="tab"]')) return
+
       switch (event.key) {
         case ' ':
           event.preventDefault()

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import clsx from 'clsx'
 import { Link, useNavigate } from 'react-router-dom'
 import { useGame, type SimSpeed } from '@/store/gameStore'
+import { SHORTCUTS } from './useSimLoop'
 import { formatCurrency } from '@/sim/cost'
 import { serialize, encodeShareLink } from '@/store/serialize'
 import { Logo } from '@/ui/Logo'
@@ -28,6 +29,8 @@ export function TopBar() {
       </Link>
 
       <div className="h-5 w-px bg-line" />
+
+      <HistoryButtons />
 
       <input
         value={name}
@@ -106,9 +109,87 @@ export function TopBar() {
           </span>
         </div>
 
+        <ShortcutsHelp />
         <NavLinks />
       </div>
     </header>
+  )
+}
+
+function HistoryButtons() {
+  const undo = useGame((s) => s.undo)
+  const redo = useGame((s) => s.redo)
+  const canUndo = useGame((s) => s.canUndo)
+  const canRedo = useGame((s) => s.canRedo)
+
+  return (
+    <div className="flex shrink-0 items-center gap-0.5">
+      <button
+        onClick={undo}
+        disabled={!canUndo}
+        title="Undo (⌘Z)"
+        aria-label="Undo"
+        className="focusable grid size-7 place-items-center rounded-md text-ink-faint transition enabled:hover:bg-raised enabled:hover:text-ink disabled:opacity-30"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 8h11a6 6 0 0 1 0 12h-4" /><path d="m7 4-4 4 4 4" />
+        </svg>
+      </button>
+      <button
+        onClick={redo}
+        disabled={!canRedo}
+        title="Redo (⇧⌘Z)"
+        aria-label="Redo"
+        className="focusable grid size-7 place-items-center rounded-md text-ink-faint transition enabled:hover:bg-raised enabled:hover:text-ink disabled:opacity-30"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 8H10a6 6 0 0 0 0 12h4" /><path d="m17 4 4 4-4 4" />
+        </svg>
+      </button>
+    </div>
+  )
+}
+
+function ShortcutsHelp() {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        title="Keyboard shortcuts"
+        aria-label="Keyboard shortcuts"
+        aria-expanded={open}
+        className="focusable grid size-7 place-items-center rounded-md text-ink-faint transition hover:bg-raised hover:text-ink"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="2" y="6" width="20" height="12" rx="2.5" />
+          <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8" />
+        </svg>
+      </button>
+      {open && (
+        <>
+          <button className="fixed inset-0 z-40 cursor-default" aria-hidden onClick={() => setOpen(false)} tabIndex={-1} />
+          <div
+            className="panel absolute right-0 top-9 z-50 w-64 rounded-xl p-2.5 shadow-2xl"
+            style={{ animation: 'var(--animate-float-in)' }}
+          >
+            <h3 className="px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-faint">
+              Keyboard
+            </h3>
+            <ul className="space-y-0.5">
+              {SHORTCUTS.map((s) => (
+                <li key={s.keys} className="flex items-baseline gap-2 rounded px-1 py-0.5">
+                  <kbd className="shrink-0 rounded border border-line bg-raised px-1.5 py-px font-mono text-[9.5px] text-ink-dim">
+                    {s.keys}
+                  </kbd>
+                  <span className="text-[11px] leading-snug text-ink-faint">{s.action}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </>
+      )}
+    </div>
   )
 }
 

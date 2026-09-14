@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import clsx from 'clsx'
 import { ReactFlowProvider } from '@xyflow/react'
 import { Canvas } from '@/canvas/Canvas'
@@ -52,6 +53,7 @@ function WorkspaceInner() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-void">
+      <SmallScreenNotice />
       <TopBar />
 
       <div className="flex min-h-0 flex-1">
@@ -108,6 +110,47 @@ function WorkspaceInner() {
           )}
           <PanelToggle side="left" open={rightOpen} onClick={() => setRightOpen((v) => !v)} label="inspector" />
         </aside>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The canvas needs room: three panels, drag-and-drop and precise handles do not
+ * work on a phone. Saying so is better than shipping something unusable.
+ */
+function SmallScreenNotice() {
+  return (
+    <div className="fixed inset-0 z-[60] grid place-items-center bg-void p-8 lg:hidden">
+      <div className="max-w-sm text-center">
+        <svg
+          className="mx-auto text-line-bright" width="44" height="44" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"
+        >
+          <rect x="2" y="4" width="20" height="14" rx="2.5" />
+          <path d="M8 21h8M12 18v3" />
+        </svg>
+        <h1 className="mt-4 text-balance text-[17px] font-semibold text-ink">
+          The canvas needs a bigger screen
+        </h1>
+        <p className="mt-2 text-balance text-[13px] leading-relaxed text-ink-dim">
+          Building architectures means dragging between small handles across three panels — it
+          genuinely does not work on a narrow display. Come back on a laptop.
+        </p>
+        <div className="mt-5 flex flex-wrap justify-center gap-2">
+          <Link
+            to="/codex"
+            className="focusable rounded-xl bg-signal px-4 py-2 text-[12.5px] font-semibold text-void transition hover:brightness-110"
+          >
+            Read the codex instead
+          </Link>
+          <Link
+            to="/"
+            className="focusable rounded-xl border border-line px-4 py-2 text-[12.5px] font-medium text-ink-dim transition hover:border-line-bright hover:text-ink"
+          >
+            Back to the start
+          </Link>
+        </div>
       </div>
     </div>
   )
