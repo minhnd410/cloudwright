@@ -1,0 +1,19 @@
+# Cloudwright — the app and its MCP server in one container.
+#
+#   docker compose up --build
+#
+#   app  http://localhost:8080
+#   mcp  http://localhost:8080/mcp
+services:
+  cloudwright:
+    build: .
+    image: cloudwright
+    container_name: cloudwright
+    ports:
+      - "8080:8080"
+    environment:
+      # Used in share URLs and by the renderer when it drives the app.
+      CLOUDWRIGHT_APP_URL: http://localhost:8080
+    # Chromium needs more than the default 64MB of shared memory.
+    shm_size: 1gb
+    restart: unless-stopped

@@ -1,56 +1,177 @@
+<div align="center">
+
 # Cloudwright
 
-**Build the cloud. Break it. Defend it.**
+### Build the cloud. Break it. Defend it.
 
-A free-form canvas where you assemble real cloud architectures, watch traffic move through
-them, inject the failures and attacks that happen in production, and find out what actually
-breaks — before it breaks somewhere that matters.
+A browser game for learning cloud infrastructure, DevOps, Kubernetes and security —
+by building real architectures, running traffic through them, and finding out what breaks.
 
-Everything runs in the browser. No backend, no accounts, no data leaves the machine.
+**[▶ Try it — cloudwright.pages.dev](https://cloudwright.pages.dev)**
+
+No sign-up, no backend, nothing to install. Everything runs in your browser.
+
+[![MIT licence](https://img.shields.io/badge/licence-MIT-38e0c8?style=flat-square)](LICENSE)
+[![Deployed on Cloudflare Pages](https://img.shields.io/badge/deployed-Cloudflare%20Pages-f38020?style=flat-square)](https://cloudwright.pages.dev)
+[![MCP server](https://img.shields.io/badge/MCP-20%20tools-b07cff?style=flat-square)](#driving-it-from-an-llm)
+
+<img src="docs/media/canvas.png" alt="The Cloudwright canvas: a three-tier AWS architecture with live traffic, latency and cost" width="100%">
+
+</div>
+
+---
+
+## Why this exists
+
+Cloud infrastructure is a pile of trade-offs that nobody writes down. Redundancy against
+cost. Consistency against latency. Control against operational load. You can read about
+them — or you can move a slider and watch the error rate climb.
+
+Cloudwright is the second one. It is a free-form canvas, like a diagram tool, except the
+diagram is *alive*: connections that make no sense in reality refuse to form, traffic
+actually flows through what you build, and the numbers respond to the decisions you make.
+
+**75 services** across AWS, Azure, GCP and Kubernetes · **105 codex entries** · **10 missions** · **88 tests**
 
 ---
 
 ## What it does
 
-**A canvas that refuses to lie.** Drag a line from the public internet to a database and it
-will not connect — and it will tell you why, in terms of route tables, wire protocols and the
-incidents that follow. Every rejected connection is a lesson.
+### Connections that refuse to lie
 
-**A simulation that models the trade-offs.** Requests flow from clients through your graph.
-Latency climbs non-linearly with utilisation. Caches absorb reads, queues absorb spikes,
-CDNs absorb both. Scaling a tier that is not the bottleneck changes nothing except the bill —
-and you can watch that happen.
+Drag a line from the public internet to a database and it will not connect. Instead it
+explains why, in terms of route tables, wire protocols and the incidents that follow:
 
-**Failures you can inject.** OOM kills, zone outages, cache stampedes, certificate expiry,
-hot partitions, connection exhaustion. Each one is a real failure mode taken from the resource
-it belongs to, with the symptom you would see and the remedy that fixes it.
+> **The public internet cannot reach a database directly.** A database speaks SQL on a
+> private port, not HTTP. Exposing one to the internet is how credential-stuffing and
+> ransomware incidents start. Production databases sit in a private subnet with no route
+> to an internet gateway.
+> *Hint: route through a load balancer → compute tier → database.*
 
-**Attacks with real defences.** Volumetric and application-layer DDoS, SQL injection, SSRF,
-credential stuffing, lateral movement, exfiltration, ransomware. Each walks your graph and is
-blunted — or not — by the controls it meets, including how you configured them.
+Every refusal is a lesson you did not have to read a book for.
 
-**A live architecture review.** A Well-Architected-style analysis runs continuously across
-five pillars and explains every finding the way a senior engineer would.
+### A simulation that models the actual trade-offs
 
-**How to build it for real.** Every resource carries the console steps, the CLI commands, the
-Terraform, the official docs, and the operational gotchas that catch people.
+Requests flow from clients through your graph. Latency climbs non-linearly with
+utilisation — barely at all up to 70%, steeply past 90% — because that is how queues
+behave. Caches absorb reads. CDNs absorb hits. Autoscaling arrives a minute late, because
+it does.
 
-**One idea, three clouds.** Every service maps to a provider-agnostic archetype, so the AWS,
-Azure and GCP equivalents sit side by side. Learn the shape once; it transfers.
+The engine is deterministic and pure, which means the emergent behaviour is trustworthy.
+My favourite is preserved as a test:
 
-**A campaign and a codex.** Ten missions built around problems people have actually been paged
-for, and 105 codex entries covering networking, compute, data, reliability, security,
-operations and Kubernetes. Every entry carries a *runnable* illustration — usually the same
-architecture twice, with and without the thing the entry is about, so the difference is
-something you watch rather than something you are told.
+> *Scaling a tier that is not the bottleneck changes the error rate by exactly nothing,
+> and the bill by a lot.*
 
-**Record and replay.** Capture a run tick by tick, then scrub through it. Incidents and
-breaches are marked on the track, so an outage can be examined a second at a time. Recordings
-export to JSON and can be rendered to video through the MCP server.
+### Break it on purpose
 
-**An MCP server.** Point a model at Cloudwright and it can read the whole catalog, author and
-validate architectures, simulate them, review them, and look at screenshots and video of its
-own work. See [Driving it from a model](#driving-it-from-a-model).
+<img src="docs/media/review.png" alt="The architecture review panel listing findings by severity" width="330" align="right">
+
+Inject an OOM kill, a zone outage, a cache stampede, a hot partition, an expired
+certificate, connection exhaustion. Each is a real failure mode attached to the resource
+it belongs to, with the symptom you would actually see in metrics and the remedy that
+fixes it.
+
+Then diagnose it from the event log and the charts, and fix the *architecture* rather
+than the incident.
+
+### Attacks with real defences
+
+Volumetric and application-layer DDoS, SQL injection, SSRF, credential stuffing, lateral
+movement, exfiltration, ransomware. Each walks your graph and is blunted — or not — by
+the controls it meets **and how you configured them**. Thirty-day backups genuinely
+reduce ransomware pressure. IMDSv2 genuinely closes the SSRF credential path. Defence in
+depth stops being a slogan and becomes a number you can watch fall.
+
+### A live architecture review
+
+A Well-Architected-style analysis runs continuously across security, reliability,
+performance, cost and operations. Every finding explains what is wrong, why it matters,
+and what to do — in the voice of someone who has been paged for it.
+
+<br clear="right">
+
+### How to build it for real
+
+Every resource carries the console steps, the CLI commands, the Terraform, the official
+documentation link, and the operational gotchas that catch people:
+
+> *Multi-AZ failover takes 60–120 seconds and existing connections are severed. Your
+> application needs retry logic or the failover is still an outage, just a shorter one.*
+
+### One idea, three clouds
+
+Every service maps to a provider-agnostic archetype, so the AWS, Azure and GCP
+equivalents sit side by side. Learn the shape once; it transfers.
+
+---
+
+## The codex
+
+<img src="docs/media/codex.png" alt="A codex entry with a runnable comparison embedded in the article" width="100%">
+
+105 entries covering networking, compute, data, reliability, security, operations and
+Kubernetes. Several carry interactive explainers — an OSI layer browser, a CIDR
+calculator, a TLS handshake walkthrough, an availability-maths calculator, an error
+budget burn-rate tool.
+
+Every entry embeds a **runnable** illustration: usually the same architecture twice, with
+and without the thing the entry is about. Caching is not something you are told removes
+85% of database load. It is something you watch remove it.
+
+## The campaign
+
+<img src="docs/media/missions.png" alt="The missions page, grouped by track" width="100%">
+
+Ten scenarios built around problems people have actually been paged for — an exposed
+database, a Black Friday spike, a CrashLoopBackOff, a ransomware event, a bill nobody can
+explain. Each has objectives evaluated live against your architecture, progressive hints,
+and a debrief that states the lesson plainly.
+
+Every mission is **proven winnable by a test**, because an objective that quietly becomes
+impossible is the kind of bug you cannot find by hand. That test has already caught three.
+
+---
+
+## Driving it from an LLM
+
+Cloudwright ships an **MCP server** that exposes the catalog, the simulator, the reviewer
+and the renderer. A model can design an architecture, find out whether it actually serves
+the traffic, read what a senior engineer would say about it — and then *look at a
+screenshot of its own work*.
+
+```bash
+npm run build && npm run mcp      # stdio, for a desktop MCP client
+npm run dev -- --enable-mcp       # …or streamable HTTP at /mcp while developing
+docker compose up --build         # …or both, on :8080
+```
+
+```json
+{
+  "mcpServers": {
+    "cloudwright": { "command": "node", "args": ["/path/to/cloudwright/dist-mcp/stdio.mjs"] }
+  }
+}
+```
+
+| Tool | What it does |
+| --- | --- |
+| `list_resources` · `describe_resource` | The catalog, including every property with its default, options, and what changing it does |
+| `list_archetypes` | The same service across all four providers — the translation table |
+| `suggest_ports` · `validate_connection` | Whether two resources can connect, and the reasoning either way |
+| `create_diagram` | Builds an architecture from a description — ports resolved and layout computed, so no port ids or coordinates needed |
+| `simulate` | Throughput, errors, latency, cost, availability, per-node state |
+| `review_diagram` | The five-pillar architecture review |
+| `compare_diagrams` | Two architectures side by side with deltas — *is this change actually better?* |
+| `screenshot_diagram` | A PNG rendered by the real application, plus the simulation state |
+| `record_video` | An MP4 of a run, with failures injected on a timeline so the video tells a story |
+| `list_failure_modes` · `list_attack_vectors` | Everything that can break, and every attack modelled |
+| `list_concepts` · `get_concept` · `list_missions` · `get_mission` · `list_templates` | The written material and the scenarios |
+| `share_url` · `arrange_diagram` | A link that opens the diagram; automatic layout |
+
+An illegal connection does not produce a broken file — it comes back with the same
+explanation a player sees, which is usually the answer to the design question that was
+really being asked.
 
 ---
 
@@ -58,220 +179,109 @@ own work. See [Driving it from a model](#driving-it-from-a-model).
 
 ```bash
 npm install
-npm run dev                  # http://localhost:5173
-npm run dev -- --enable-mcp  # …and an MCP endpoint at /mcp
+npm run dev        # http://localhost:5173
+npm run check      # typecheck + lint + 88 tests
+npm run build      # dist/ (app) and dist-mcp/ (MCP server)
 ```
+
+### With Docker
+
+One container serves the app and the MCP endpoint, and the renderer drives the very app
+it is serving:
 
 ```bash
-npm run check    # typecheck + lint + tests
-npm run build    # production build into dist/ (and the MCP server into dist-mcp/)
+docker compose up --build
+#  app  http://localhost:8080
+#  mcp  http://localhost:8080/mcp
 ```
 
-### Working in it
+The image bundles Chromium and ffmpeg so the screenshot and video tools work out of the
+box, which makes it large (~1.8GB). Everything else works without them.
 
-Diagrams open in **tabs** — the tab carries the name, and double-clicking one renames it.
-**File** handles new, duplicate, JSON import and export, share links and recordings; **View**
-shows and hides the three panels. A hidden panel leaves a labelled strip behind, so it is
-always obvious both that something is hidden and what it was.
+### Deploying
 
-| | |
-| --- | --- |
-| `Space` | Play or pause |
-| `R` / `X` | Reset the simulation / break something at random |
-| `⌘Z` `⇧⌘Z` | Undo, redo |
-| `⌘D` | Duplicate the selected resource |
-| `⌘1` `⌘2` `⌘3` | Palette, inspector, telemetry |
-
-Everything is stored locally. A diagram can also be shared as a URL — the whole architecture is
-compressed into the link, so nothing is uploaded anywhere.
-
-## Driving it from a model
-
-Cloudwright ships an MCP server that exposes the catalog, the simulator, the reviewer and the
-renderer. A model can design an architecture, find out whether it actually serves the traffic,
-read what a senior engineer would say about it, and then *look at a screenshot of its own work*.
-
-```bash
-npm run build          # builds the app and the MCP server
-npm run mcp            # stdio, for a desktop MCP client
-```
-
-```json
-{
-  "mcpServers": {
-    "cloudwright": {
-      "command": "node",
-      "args": ["/absolute/path/to/cloudwright/dist-mcp/stdio.mjs"]
-    }
-  }
-}
-```
-
-Or over HTTP while developing:
-
-```bash
-npm run dev -- --enable-mcp   # streamable HTTP at http://localhost:5173/mcp
-```
-
-### What it exposes
-
-| Tool | What it does |
-| --- | --- |
-| `list_resources` · `describe_resource` | The catalog, including every property with its default, its options, and what changing it does |
-| `list_archetypes` | The same service across all four providers — the translation table |
-| `suggest_ports` · `validate_connection` | Whether two resources can connect, and the reasoning either way |
-| `create_diagram` | Builds an architecture from a description. Ports are resolved and the layout computed, so no port ids or coordinates are needed |
-| `arrange_diagram` | Re-lays out an existing diagram by dependency depth |
-| `simulate` | Runs traffic through it: throughput, errors, latency, cost, availability, per-node state |
-| `review_diagram` | The five-pillar architecture review |
-| `compare_diagrams` | Two architectures side by side with the deltas — "is this change actually better?" |
-| `screenshot_diagram` | A PNG rendered by the real application, plus the simulation state at that moment |
-| `record_video` | An MP4 of a run, with failures injected on a timeline so the video tells a story |
-| `list_failure_modes` · `list_attack_vectors` | Everything that can break, and every attack modelled |
-| `list_concepts` · `get_concept` · `list_missions` · `get_mission` · `list_templates` | The written material and the scenarios |
-| `share_url` | A link that opens the diagram in the app |
-
-Resources: `cloudwright://catalog`, `cloudwright://providers`, `cloudwright://authoring`.
-
-An illegal connection does not produce a broken file — it comes back with the explanation a
-player would see, which is usually the answer to the design question that was really being
-asked:
-
-> The public internet cannot reach a database directly. A database speaks SQL on a private
-> port, not HTTP… Hint: route through a load balancer → compute tier → database.
-
-**Screenshots and video** drive a real browser. They need a Chromium-based browser
-(`CLOUDWRIGHT_BROWSER` overrides the search) and, for video, `ffmpeg`. If no dev server is
-running they serve `dist/` themselves, so a plain checkout works after `npm run build`.
-
-## Deploying to Cloudflare Pages
-
-**Via Git (recommended).** Connect the repository in the Cloudflare dashboard and set:
+Static files — Cloudflare Pages, Netlify, GitHub Pages, any bucket.
 
 | Setting | Value |
 | --- | --- |
-| Framework preset | None (or Vite) |
 | Build command | `npm run build` |
-| Build output directory | `dist` |
+| Output directory | `dist` |
 
-`public/_redirects` sends every path to `index.html` so client-side routing works on a hard
-refresh, and `public/_headers` sets the security headers and immutable caching for hashed
-assets. Both are copied into `dist` by the build.
-
-**Via direct upload.**
-
-```bash
-npx wrangler pages project create cloudwright --production-branch main
-npm run deploy
-```
+`public/_redirects` gives the SPA its client-side routing fallback and `public/_headers`
+sets security headers and immutable asset caching. Both are copied into `dist/`.
 
 ---
 
-## How it is put together
+## How it is built
+
+React · TypeScript · Vite · React Flow · Zustand · Tailwind. No backend, no database, no
+analytics. Diagrams live in your browser, or compressed into a share link.
 
 ```
 src/
-  catalog/      Every cloud service, as data. One file per provider area.
-    schema/     Types, connection rules, flow metadata, reusable property presets
-    providers/  aws · azure · gcp · kubernetes · core
-    registry.ts Indices, search, cross-provider equivalents, dev-time validation
-  sim/          The engine. Pure, deterministic, no React.
-    graph.ts    Topology, evaluation order, traffic fan-out
-    capacity.ts Configuration → capacity, latency, availability, cache hit ratio
-    engine.ts   One tick: demand forward, latency and errors backward
-    attacks.ts  Attack propagation and what each control actually stops
-    advisor.ts  The architecture review
-    incidents.ts Failure injection and chaos mode
-  canvas/       React Flow integration: nodes, animated edges, drag-and-drop, layout
+  catalog/      Every cloud service, as data — the largest and most valuable part
+  sim/          The engine: pure, deterministic, no React
+  canvas/       React Flow integration: nodes, animated edges, layout
   panels/       Palette, inspector, review, observability
-  codex/        The written material and its interactive widgets
+  codex/        The written material, interactive widgets and runnable demos
   scenarios/    Missions, reference templates, objective evaluation
-  store/        Zustand stores — document, tabs, panels — and serialisation
-  pages/        Landing, missions, codex
-mcp/            The MCP server: tools, transports, and browser rendering
-scripts/        The dev launcher that understands --enable-mcp
-tests/          Catalog validation, engine behaviour, mission solvability, authoring
+mcp/            MCP server: tools, transports, browser rendering
+tests/          Catalog validation, engine behaviour, mission solvability
 ```
 
-### The two ideas that hold it together
+**Two ideas hold it together.**
 
-**Archetypes.** The simulator never reasons about `aws.ec2` versus `azure.vm` versus
-`gcp.compute-engine`. It reasons about the archetype `vm`. That keeps the engine small, makes
-every new resource work on the day it is added, and gives the cross-provider comparison for
-free.
+*Archetypes.* The simulator never reasons about `aws.ec2` versus `azure.vm`. It reasons
+about the archetype `vm`. The engine stays small, every new resource works on the day it
+is added, and the cross-provider comparison falls out for free.
 
-**The catalog is the single source of truth.** One `ResourceDef` supplies the palette entry,
-the node, the ports, the connection rules, the property editor, the cost model, the failure
-modes, the security profile and the build guide. Nothing is duplicated, so nothing can drift.
+*The catalog is the single source of truth.* One `ResourceDef` supplies the palette entry,
+the canvas node, the ports and connection rules, the property editor, the cost model, the
+failure modes, the security profile and the build guide. Nothing is duplicated, so nothing
+can drift.
 
 ---
 
-## Adding to it
+## Contributing
 
-### A new cloud service
-
-Add one `ResourceDef` to the right file under `src/catalog/providers/`, and export it from that
-file's array. That is the whole change — the palette, canvas, inspector, simulation, cost model
-and advisor all pick it up. `npm test` validates the structure.
+Adding a cloud service is **one file**:
 
 ```ts
 const myService: ResourceDef = {
-  id: 'aws.my-service',          // never rename: saved diagrams reference it
+  id: 'aws.my-service',          // never rename: share links reference it
   provider: 'aws',
-  name: 'My Service',
   short: 'MyService',            // shown on the node
   archetype: 'queue',            // how the simulator treats it
-  category: 'messaging',         // where it sits in the palette
+  category: 'messaging',
   tagline: 'One line for the palette',
   description: 'A paragraph explaining it in plain language.',
   ports: [inPort('in', 'Messages in', ['queue']), outPort('out', 'Messages out', ['queue'])],
-  props: [/* each with help, impact, and a danger predicate where it matters */],
-  sim: { capacity: 10000, latencyMs: 12, failureModes: [/* … */] },
+  props: [/* each with `help`, `impact`, and `danger` where it matters */],
+  sim: { capacity: 10_000, latencyMs: 12, failureModes: [/* … */] },
   cost: { perMillionRequests: () => 0.4 },
   setup: { console: [], snippets: [], docs: [], gotchas: [] },
-  concepts: ['async-messaging'],
 }
 ```
 
-Two rules worth keeping:
+The palette, canvas, inspector, simulation, cost model and advisor all pick it up. Tests
+validate the structure. [`CLAUDE.md`](CLAUDE.md) has the full guide — house style, the
+traps that have bitten before, and how to add a codex entry or a mission.
 
-- **Every property needs `help` and `impact`.** `help` says what the setting is; `impact` says
-  what visibly changes when you move it. The inspector shows both, and the second is where the
-  teaching happens.
-- **Use `danger` for the production footguns.** It feeds the node warning badge, the inspector
-  and the architecture review at once.
-
-### A new codex entry
-
-Add a `Concept` to the right file in `src/codex/topics/` and export it. Reference it from a
-resource's `concepts` array or another entry's `related`. Tests fail on dangling links, so the
-two stay in sync. Set `widget` to attach one of the interactive explainers.
-
-### A new codex demo
-
-Add an entry to `DEMOS` in `src/codex/demos.ts`, keyed by concept id. Give it two variants —
-with and without the thing the entry is about — and the article gets a runnable comparison.
-Entries with no explicit demo fall back to the reference architecture closest to their subject,
-so nothing is ever left without something to press play on.
-
-### A new mission
-
-Add a `Mission` to `src/scenarios/missions.ts`. Use the `diagram()` helper for the starting
-architecture — it resolves edge flows from the catalog, so a nonsensical connection throws at
-build time rather than shipping.
-
-Then add a solution to `tests/solvable.test.ts`. That test proves the mission can actually be
-completed, which is the one thing that is impossible to notice by hand once objectives get
-interesting.
+Corrections to the technical content are especially welcome. The whole value of this
+project is that what it teaches is true.
 
 ---
 
 ## Accuracy
 
-Costs, capacities and latencies are simplified teaching figures chosen to make trade-offs
-visible — not quotes. Always check the provider's own calculator before spending money.
-Service behaviour, failure modes and remediation advice aim to be accurate; corrections are
-welcome.
+Costs, capacities and latencies are **simplified teaching figures** chosen to make
+trade-offs visible — not quotes. Always check the provider's own calculator before
+spending money. Service behaviour, failure modes and remediation advice aim to be
+accurate; if you spot something wrong, please open an issue.
 
-Cloudwright is not affiliated with Amazon, Microsoft, Google or the CNCF. Resource icons are
-original geometric drawings, not the providers' trademarked icon sets.
+Not affiliated with Amazon, Microsoft, Google or the CNCF. Resource icons are original
+geometric drawings, not the providers' trademarked icon sets.
+
+## Licence
+
+[MIT](LICENSE)

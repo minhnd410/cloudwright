@@ -1,0 +1,9 @@
+node_modules
+dist
+dist-mcp
+.git
+.github
+*.log
+*.tmp.mjs
+.DS_Store
+coverage

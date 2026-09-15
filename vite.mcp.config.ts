@@ -24,6 +24,7 @@ export default defineConfig({
       input: {
         stdio: path.resolve(here, 'mcp/stdio.ts'),
         http: path.resolve(here, 'mcp/http.ts'),
+        serve: path.resolve(here, 'mcp/serve.ts'),
       },
       output: { format: 'esm', entryFileNames: '[name].mjs' },
       external: ['puppeteer-core', '@modelcontextprotocol/sdk', /^@modelcontextprotocol\/sdk\//, 'zod', /^node:/],
