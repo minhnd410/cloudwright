@@ -17,6 +17,8 @@ export default defineConfig({
     target: 'node22',
     outDir: 'dist-mcp',
     emptyOutDir: true,
+    // A server bundle has no use for the web app's static assets.
+    copyPublicDir: false,
     minify: false,
     rollupOptions: {
       input: {
