@@ -21,7 +21,9 @@ export function TabBar() {
   const [editing, setEditing] = useState<string | null>(null)
 
   return (
-    <div className="flex h-9 shrink-0 items-stretch gap-1 border-b border-line bg-abyss/70 px-1.5">
+    <div className="flex h-9 shrink-0 items-stretch border-b border-line bg-abyss/70 px-1.5">
+      {/* The new-diagram button scrolls with the tabs and sits against the last
+          one, the way a browser's does — not pinned to the far edge. */}
       <div className="flex min-w-0 flex-1 items-stretch gap-0.5 overflow-x-auto">
         {tabs.map((tab) => {
           const isActive = tab.id === activeId
@@ -31,7 +33,9 @@ export function TabBar() {
             <div
               key={tab.id}
               className={clsx(
-                'group relative flex min-w-[112px] max-w-[220px] shrink-0 items-center gap-1.5 rounded-t-lg px-2.5 transition-colors',
+                // Tabs compress before the strip scrolls, so the new-diagram
+                // button beside them stays reachable at any tab count.
+                'group relative flex min-w-[96px] max-w-[220px] items-center gap-1.5 rounded-t-lg px-2.5 transition-colors',
                 isActive ? 'bg-surface text-ink' : 'text-ink-faint hover:bg-surface/50 hover:text-ink-dim',
               )}
             >
@@ -71,18 +75,18 @@ export function TabBar() {
             </div>
           )
         })}
-      </div>
 
-      <button
-        onClick={() => open()}
-        title="New diagram"
-        aria-label="New diagram"
-        className="focusable my-1 grid size-7 shrink-0 place-items-center rounded-lg text-ink-faint transition hover:bg-raised hover:text-ink"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-      </button>
+        <button
+          onClick={() => open()}
+          title="New diagram"
+          aria-label="New diagram"
+          className="focusable my-1 ml-0.5 grid size-7 shrink-0 place-items-center self-center rounded-lg text-ink-faint transition hover:bg-raised hover:text-ink"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
+      </div>
     </div>
   )
 }
