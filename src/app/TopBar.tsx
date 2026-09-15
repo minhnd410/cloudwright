@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import { Link, useNavigate } from 'react-router-dom'
 import { useGame, type SimSpeed } from '@/store/gameStore'
@@ -322,8 +322,29 @@ function TransportButton({ active, onClick, label, children }: { active: boolean
 
 function ShortcutsHelp() {
   const [open, setOpen] = useState(false)
+  const root = useRef<HTMLDivElement>(null)
+
+  // A `fixed inset-0` click-catcher would not work here: the toolbar uses
+  // backdrop-filter, which makes it the containing block for fixed children —
+  // so the overlay would only cover the toolbar itself.
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      if (!root.current?.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
   return (
-    <div className="relative">
+    <div ref={root} className="relative">
       <button
         onClick={() => setOpen((v) => !v)} title="Keyboard shortcuts" aria-label="Keyboard shortcuts" aria-expanded={open}
         className="focusable grid size-7 place-items-center rounded-md text-ink-faint transition hover:bg-raised hover:text-ink"
@@ -334,20 +355,17 @@ function ShortcutsHelp() {
         </svg>
       </button>
       {open && (
-        <>
-          <button className="fixed inset-0 z-[70] cursor-default" aria-hidden onClick={() => setOpen(false)} tabIndex={-1} />
-          <div className="panel absolute right-0 top-9 z-[80] w-64 rounded-xl p-2.5 shadow-2xl" style={{ animation: 'var(--animate-float-in)' }}>
-            <h3 className="px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-faint">Keyboard</h3>
-            <ul className="space-y-0.5">
-              {SHORTCUTS.map((s) => (
-                <li key={s.keys} className="flex items-baseline gap-2 rounded px-1 py-0.5">
-                  <kbd className="shrink-0 rounded border border-line bg-raised px-1.5 py-px font-mono text-[9.5px] text-ink-dim">{s.keys}</kbd>
-                  <span className="text-[11px] leading-snug text-ink-faint">{s.action}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </>
+        <div className="panel absolute right-0 top-9 z-[80] w-64 rounded-xl p-2.5 shadow-2xl" style={{ animation: 'var(--animate-float-in)' }}>
+          <h3 className="px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-faint">Keyboard</h3>
+          <ul className="space-y-0.5">
+            {SHORTCUTS.map((s) => (
+              <li key={s.keys} className="flex items-baseline gap-2 rounded px-1 py-0.5">
+                <kbd className="shrink-0 rounded border border-line bg-raised px-1.5 py-px font-mono text-[9.5px] text-ink-dim">{s.keys}</kbd>
+                <span className="text-[11px] leading-snug text-ink-faint">{s.action}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   )
