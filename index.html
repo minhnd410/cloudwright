@@ -1,12 +1,13 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Cloudwright — build the cloud, break it, defend it</title>
     <meta name="description" content="A free browser game for learning cloud infrastructure, DevOps, Kubernetes and security. Build real architectures on a canvas, simulate traffic and failure, and see how you would build the same thing for real on AWS, Azure or GCP." />
-    <meta name="theme-color" content="#05070d" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#05070d" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#eceff6" media="(prefers-color-scheme: light)" />
+    <meta name="color-scheme" content="dark light" />
 
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Cloudwright — build the cloud, break it, defend it" />
@@ -19,6 +20,30 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   </head>
   <body>
+    <!--
+      Resolve the theme before the first paint. Anything later — a React effect,
+      a module import — flashes the wrong palette, and on this app that flash is
+      a full screen of black or white. Kept inline and blocking for that reason.
+      The ?theme= override exists so headless captures can pick a theme without
+      touching the visitor's stored preference.
+    -->
+    <script>
+      (function () {
+        try {
+          var forced = new URLSearchParams(location.search).get('theme')
+          var stored = forced || localStorage.getItem('cloudwright:theme:v1') || 'system'
+          var resolved =
+            stored === 'light' || stored === 'dark'
+              ? stored
+              : matchMedia('(prefers-color-scheme: light)').matches
+                ? 'light'
+                : 'dark'
+          document.documentElement.dataset.theme = resolved
+        } catch (e) {
+          document.documentElement.dataset.theme = 'dark'
+        }
+      })()
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

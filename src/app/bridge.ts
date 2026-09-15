@@ -1,6 +1,7 @@
 import { useGame } from '@/store/gameStore'
 import { useTabs } from '@/store/tabStore'
 import { useUi } from '@/store/uiStore'
+import { useTheme, type ThemePref } from '@/store/themeStore'
 import { getResource } from '@/catalog/registry'
 import { makeIncident } from '@/sim/incidents'
 import type { SavedDiagram } from '@/store/types'
@@ -18,6 +19,8 @@ export interface CloudwrightBridge {
   ready: boolean
   loadDiagram(diagram: SavedDiagram, options?: { newTab?: boolean }): void
   setChromeless(on: boolean): void
+  /** Switches the colour scheme, as the toolbar toggle does. */
+  setTheme(theme: ThemePref): void
   /** Re-runs fit-to-view, e.g. after the layout has changed size. */
   refit(): void
   /** Runs exactly `count` simulation ticks, synchronously. */
@@ -43,6 +46,10 @@ export function installBridge() {
 
     setChromeless(on) {
       useUi.getState().setChromeless(on)
+    },
+
+    setTheme(theme) {
+      useTheme.getState().setPref(theme)
     },
 
     refit() {

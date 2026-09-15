@@ -66,9 +66,9 @@ function Metric({ label, value, sub, tone = 'default' }: { label: string; value:
 
 const OSI_LAYERS = [
   { n: 7, name: 'Application', examples: 'HTTP, gRPC, DNS, TLS payloads', sees: 'URLs, headers, cookies, request bodies', cloud: 'ALB · Application Gateway · WAF · API Gateway · CDN', colour: 'var(--color-flux)' },
-  { n: 6, name: 'Presentation', examples: 'TLS encryption, compression, encoding', sees: 'The encrypted session', cloud: 'TLS termination on a load balancer or CDN', colour: '#8fa6ff' },
-  { n: 5, name: 'Session', examples: 'Session establishment and teardown', sees: 'Connection lifecycle', cloud: 'Rarely reasoned about directly', colour: '#8fa6ff' },
-  { n: 4, name: 'Transport', examples: 'TCP, UDP', sees: 'Ports, connections, sequence numbers', cloud: 'NLB · Azure Load Balancer · security groups', colour: '#7ee0c0' },
+  { n: 6, name: 'Presentation', examples: 'TLS encryption, compression, encoding', sees: 'The encrypted session', cloud: 'TLS termination on a load balancer or CDN', colour: 'var(--color-flow-tcp)' },
+  { n: 5, name: 'Session', examples: 'Session establishment and teardown', sees: 'Connection lifecycle', cloud: 'Rarely reasoned about directly', colour: 'var(--color-flow-tcp)' },
+  { n: 4, name: 'Transport', examples: 'TCP, UDP', sees: 'Ports, connections, sequence numbers', cloud: 'NLB · Azure Load Balancer · security groups', colour: 'var(--color-flow-queue)' },
   { n: 3, name: 'Network', examples: 'IP, ICMP, routing', sees: 'Source and destination addresses', cloud: 'VPC routes · NACLs · NAT · BGP', colour: 'var(--color-signal)' },
   { n: 2, name: 'Data link', examples: 'Ethernet, MAC addressing', sees: 'Frames on one physical segment', cloud: 'Managed entirely by the provider', colour: 'var(--color-ink-faint)' },
   { n: 1, name: 'Physical', examples: 'Fibre, copper, radio', sees: 'Bits on a wire', cloud: 'Managed entirely by the provider', colour: 'var(--color-ink-faint)' },

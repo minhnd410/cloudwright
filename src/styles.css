@@ -6,6 +6,12 @@
   --font-sans: 'Inter var', 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
+  /*
+   * Dark is the base palette. Light overrides the same names below, so every
+   * utility (`bg-surface`, `text-ink-dim`) follows the theme without a single
+   * `dark:` variant anywhere in the components.
+   */
+
   /* Surfaces — deep space blues, not pure grey */
   --color-void: #05070d;
   --color-abyss: #080b14;
@@ -38,6 +44,19 @@
   --color-k8s: #6c8ff7;
   --color-core: #94a3b8;
 
+  /* Edge colours by flow, so a connection reads the same in either theme */
+  --color-flow-tcp: #8fb0ff;
+  --color-flow-cache: #5fd7ff;
+  --color-flow-queue: #7ee0c0;
+  --color-flow-search: #9fd0ff;
+  --color-flow-block: #6bb6ff;
+  --color-flow-dns: #c9a7ff;
+  --color-flow-cert: #ffd9a0;
+  --color-flow-identity: #ffc46b;
+  --color-flow-deploy: #a0ffc4;
+  --color-flow-fabric: #8a9bbd;
+  --color-flow-backup: #9ad5a0;
+
   --radius-card: 0.75rem;
 
   --animate-dash: dash 1s linear infinite;
@@ -45,6 +64,73 @@
   --animate-float-in: float-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   --animate-shimmer: shimmer 2.5s linear infinite;
   --animate-breathe: breathe 3s ease-in-out infinite;
+}
+
+/*
+ * Depth is drawn differently in each theme. On black, a coloured glow reads as
+ * energy; on paper the same glow reads as a smudge, so light trades it for a
+ * neutral lift. Components compose both, and each theme zeroes the one it does
+ * not want.
+ */
+:root {
+  color-scheme: dark;
+  --cw-glow: 1;
+  --cw-lift: 0 0 0 0 transparent;
+  --canvas-dot: var(--color-line);
+  /* An idle edge is background detail, but a pale hue on paper disappears
+     entirely where the same hue on black still reads. */
+  --edge-idle-opacity: 0.42;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --cw-glow: 0;
+  --cw-lift: 0 1px 2px rgb(16 25 43 / 0.05), 0 10px 24px -12px rgb(16 25 43 / 0.18);
+  --canvas-dot: #c9d3e3;
+  --edge-idle-opacity: 0.62;
+
+  /* Surfaces — cool paper. Never pure white as the ground: the canvas grid and
+     every hairline border need something to sit against. */
+  --color-void: #eceff6;
+  --color-abyss: #f6f8fc;
+  --color-deep: #ffffff;
+  --color-surface: #ffffff;
+  --color-raised: #eef2f9;
+  --color-line: #d8dfeb;
+  --color-line-bright: #b4c1d6;
+
+  --color-ink: #10192b;
+  --color-ink-dim: #46566f;
+  --color-ink-faint: #5d6b84;
+
+  /* Same hues, darkened until each clears 4.5:1 on the canvas ground. */
+  --color-signal: #0b796a;
+  --color-signal-dim: #2f9a88;
+  --color-flux: #3b5ce0;
+  --color-power: #7c3aed;
+  --color-ember: #ac4f08;
+  --color-alarm: #d11f34;
+  --color-toxic: #c01a6f;
+  --color-coin: #995d06;
+  --color-vault: #0d729c;
+
+  --color-aws: #a65500;
+  --color-azure: #0369a1;
+  --color-gcp: #c5221f;
+  --color-k8s: #3b5bdb;
+  --color-core: #5b6b85;
+
+  --color-flow-tcp: #4a66c8;
+  --color-flow-cache: #0d7f9e;
+  --color-flow-queue: #0d8168;
+  --color-flow-search: #2f5fd0;
+  --color-flow-block: #1f66bd;
+  --color-flow-dns: #7038d8;
+  --color-flow-cert: #a65500;
+  --color-flow-identity: #a65500;
+  --color-flow-deploy: #0a7d52;
+  --color-flow-fabric: #5b6b85;
+  --color-flow-backup: #157a3c;
 }
 
 @keyframes dash { to { stroke-dashoffset: -20; } }
@@ -58,7 +144,6 @@
 @keyframes breathe { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
 
 @layer base {
-  :root { color-scheme: dark; }
   html, body, #root { height: 100%; }
   body {
     margin: 0;
@@ -83,7 +168,12 @@
     backdrop-filter: blur(18px) saturate(1.3);
     border: 1px solid var(--color-line);
   }
-  .glow-ring { box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-signal) 40%, transparent), 0 0 24px -4px color-mix(in oklab, var(--color-signal) 45%, transparent); }
+  .glow-ring {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--color-signal) 40%, transparent),
+      0 0 24px -4px color-mix(in oklab, var(--color-signal) calc(45% * var(--cw-glow)), transparent),
+      var(--cw-lift);
+  }
   .hairline { border-color: var(--color-line); }
   .text-balance { text-wrap: balance; }
 
@@ -113,6 +203,14 @@
 .react-flow__resize-control.handle { background: var(--color-signal); border-color: var(--color-deep); }
 .react-flow__resize-control.line { border-color: color-mix(in oklab, var(--color-signal) 50%, transparent); }
 .react-flow__node-group { z-index: -1 !important; }
+
+.react-flow__minimap-node.cw-mm-idle { fill: var(--color-line-bright); }
+.react-flow__minimap-node.cw-mm-container { fill: color-mix(in oklab, var(--color-line) 70%, transparent); }
+.react-flow__minimap-node.cw-mm-healthy { fill: var(--color-signal); }
+.react-flow__minimap-node.cw-mm-saturated { fill: var(--color-ember); }
+.react-flow__minimap-node.cw-mm-degraded,
+.react-flow__minimap-node.cw-mm-down { fill: var(--color-alarm); }
+.react-flow__minimap-node.cw-mm-breached { fill: var(--color-toxic); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }

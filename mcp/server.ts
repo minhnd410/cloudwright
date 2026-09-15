@@ -523,13 +523,14 @@ export function createCloudwrightServer(options: ServerOptions = {}) {
           width: z.number().optional(),
           height: z.number().optional(),
           loadMultiplier: z.number().optional(),
+          theme: z.enum(['light', 'dark']).optional().describe('Colour scheme to render in. Default dark.'),
         },
       },
-      async ({ diagram, ticks, incidents, width, height, loadMultiplier }) => {
+      async ({ diagram, ticks, incidents, width, height, loadMultiplier, theme }) => {
         const { diagram: doc } = coerceDiagram(diagram)
         const appUrl = await resolveAppUrl(options.appUrl, DIST)
         const { base64, snapshot } = await renderScreenshot(appUrl, {
-          diagram: doc, ticks, incidents, width, height, loadMultiplier,
+          diagram: doc, ticks, incidents, width, height, loadMultiplier, theme,
         })
         return {
           content: [
@@ -555,13 +556,14 @@ export function createCloudwrightServer(options: ServerOptions = {}) {
           width: z.number().optional(),
           height: z.number().optional(),
           loadMultiplier: z.number().optional(),
+          theme: z.enum(['light', 'dark']).optional().describe('Colour scheme to render in. Default dark.'),
         },
       },
-      async ({ diagram, frames, fps, outputPath, timeline, width, height, loadMultiplier }) => {
+      async ({ diagram, frames, fps, outputPath, timeline, width, height, loadMultiplier, theme }) => {
         const { diagram: doc } = coerceDiagram(diagram)
         const appUrl = await resolveAppUrl(options.appUrl, DIST)
         const result = await renderVideo(appUrl, {
-          diagram: doc, frames, fps, outputPath, timeline, width, height, loadMultiplier,
+          diagram: doc, frames, fps, outputPath, timeline, width, height, loadMultiplier, theme,
           // Scale 1 keeps the file small; videos are for watching, not pixel-peeping.
           scale: 1,
         })

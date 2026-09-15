@@ -163,7 +163,7 @@ docker compose up --build         # …or both, on :8080
 | `simulate` | Throughput, errors, latency, cost, availability, per-node state |
 | `review_diagram` | The five-pillar architecture review |
 | `compare_diagrams` | Two architectures side by side with deltas — *is this change actually better?* |
-| `screenshot_diagram` | A PNG rendered by the real application, plus the simulation state |
+| `screenshot_diagram` | A PNG rendered by the real application, in either theme, plus the simulation state |
 | `record_video` | An MP4 of a run, with failures injected on a timeline so the video tells a story |
 | `list_failure_modes` · `list_attack_vectors` | Everything that can break, and every attack modelled |
 | `list_concepts` · `get_concept` · `list_missions` · `get_mission` · `list_templates` | The written material and the scenarios |

@@ -3,7 +3,12 @@ import type { EdgeKind, Flow } from './types'
 export interface FlowMeta {
   label: string
   kind: EdgeKind
-  /** CSS colour token used for the edge and its travelling packets. */
+  /**
+   * A `var()` reference, never a literal: edges keep their meaning in both
+   * themes, and the light palette darkens every hue to stay legible on paper.
+   * Apply it through `style`, not an SVG presentation attribute — Safari does
+   * not substitute custom properties in those.
+   */
   color: string
   /** OSI layer this flow predominantly lives at. Powers the layer overlay. */
   osi: 3 | 4 | 7
@@ -23,11 +28,11 @@ export const FLOW_META: Record<Flow, FlowMeta> = {
     blurb: 'Binary RPC over HTTP/2. Multiplexed streams on one connection — great for service-to-service, awkward through naive L4 load balancers.',
   },
   tcp: {
-    label: 'TCP', kind: 'network', color: '#8fb0ff', osi: 4, port: 'any',
+    label: 'TCP', kind: 'network', color: 'var(--color-flow-tcp)', osi: 4, port: 'any',
     blurb: 'Connection-oriented transport. Three-way handshake, ordered delivery, retransmits. An L4 load balancer sees only this — no URLs, no headers.',
   },
   udp: {
-    label: 'UDP', kind: 'network', color: '#8fb0ff', osi: 4, port: 'any',
+    label: 'UDP', kind: 'network', color: 'var(--color-flow-tcp)', osi: 4, port: 'any',
     blurb: 'Fire-and-forget transport. No handshake, which is why it is the favourite vehicle for amplification floods.',
   },
   sql: {
@@ -39,19 +44,19 @@ export const FLOW_META: Record<Flow, FlowMeta> = {
     blurb: 'Key/document access. Scales horizontally by partition key — a hot partition will throttle you long before the cluster is busy.',
   },
   cache: {
-    label: 'Cache', kind: 'data', color: '#5fd7ff', osi: 7, port: '6379 / 11211',
+    label: 'Cache', kind: 'data', color: 'var(--color-flow-cache)', osi: 7, port: '6379 / 11211',
     blurb: 'In-memory key/value lookups measured in microseconds. Absorbs read load — until a cold start stampedes every miss into the database.',
   },
   queue: {
-    label: 'Queue', kind: 'data', color: '#7ee0c0', osi: 7,
+    label: 'Queue', kind: 'data', color: 'var(--color-flow-queue)', osi: 7,
     blurb: 'Durable asynchronous hand-off. Decouples producer from consumer, converts a traffic spike into a backlog instead of an outage.',
   },
   stream: {
-    label: 'Stream', kind: 'data', color: '#7ee0c0', osi: 7,
+    label: 'Stream', kind: 'data', color: 'var(--color-flow-queue)', osi: 7,
     blurb: 'Ordered, replayable log of events. Many consumers read the same records at their own pace.',
   },
   search: {
-    label: 'Search', kind: 'data', color: '#9fd0ff', osi: 7, port: '9200',
+    label: 'Search', kind: 'data', color: 'var(--color-flow-search)', osi: 7, port: '9200',
     blurb: 'Inverted-index queries. Cheap to read, expensive to index — and the index is a derived copy, never the source of truth.',
   },
   object: {
@@ -59,31 +64,31 @@ export const FLOW_META: Record<Flow, FlowMeta> = {
     blurb: 'Flat HTTP-addressable blobs. Effectively infinite, eventually consistent on overwrite, and the single most common source of public data leaks.',
   },
   block: {
-    label: 'Block volume', kind: 'data', color: '#6bb6ff', osi: 7,
+    label: 'Block volume', kind: 'data', color: 'var(--color-flow-block)', osi: 7,
     blurb: 'A raw virtual disk attached to one machine. IOPS and throughput are provisioned — run out and everything above it stalls.',
   },
   file: {
-    label: 'File share', kind: 'data', color: '#6bb6ff', osi: 7, port: '2049 / 445',
+    label: 'File share', kind: 'data', color: 'var(--color-flow-block)', osi: 7, port: '2049 / 445',
     blurb: 'Shared POSIX or SMB filesystem that many machines mount at once.',
   },
   dns: {
-    label: 'DNS', kind: 'dns', color: '#c9a7ff', osi: 7, port: '53',
+    label: 'DNS', kind: 'dns', color: 'var(--color-flow-dns)', osi: 7, port: '53',
     blurb: 'Name → address resolution. The first hop of every request and, thanks to TTL caching, the slowest thing in the world to change.',
   },
   'tls-cert': {
-    label: 'TLS certificate', kind: 'identity', color: '#ffd9a0', osi: 7, port: '443',
+    label: 'TLS certificate', kind: 'identity', color: 'var(--color-flow-cert)', osi: 7, port: '443',
     blurb: 'Proves the server is who it claims to be and encrypts the session. Expiry is a scheduled outage you forgot to schedule.',
   },
   identity: {
-    label: 'Identity / IAM', kind: 'identity', color: '#ffc46b', osi: 7,
+    label: 'Identity / IAM', kind: 'identity', color: 'var(--color-flow-identity)', osi: 7,
     blurb: 'Who may do what, to which resource, under which conditions. Grants here define your blast radius when something is compromised.',
   },
   secret: {
-    label: 'Secret', kind: 'identity', color: '#ffc46b', osi: 7,
+    label: 'Secret', kind: 'identity', color: 'var(--color-flow-identity)', osi: 7,
     blurb: 'Credentials fetched at runtime instead of baked into an image or an env file in git.',
   },
   key: {
-    label: 'Encryption key', kind: 'identity', color: '#ffc46b', osi: 7,
+    label: 'Encryption key', kind: 'identity', color: 'var(--color-flow-identity)', osi: 7,
     blurb: 'Key material for encryption at rest. Whoever controls the key controls the data, no matter who holds the ciphertext.',
   },
   telemetry: {
@@ -91,19 +96,19 @@ export const FLOW_META: Record<Flow, FlowMeta> = {
     blurb: 'Metrics, logs and traces flowing out to somewhere you can query them at 3am.',
   },
   deploy: {
-    label: 'Deployment', kind: 'deploy', color: '#a0ffc4', osi: 7,
+    label: 'Deployment', kind: 'deploy', color: 'var(--color-flow-deploy)', osi: 7,
     blurb: 'A pipeline pushing new versions. The most common cause of incidents, and the fastest way out of one.',
   },
   image: {
-    label: 'Container image', kind: 'deploy', color: '#a0ffc4', osi: 7,
+    label: 'Container image', kind: 'deploy', color: 'var(--color-flow-deploy)', osi: 7,
     blurb: 'Immutable build artefact pulled at start-up. A tag is a mutable pointer; a digest is not.',
   },
   peering: {
-    label: 'Network peering', kind: 'fabric', color: '#8a9bbd', osi: 3,
+    label: 'Network peering', kind: 'fabric', color: 'var(--color-flow-fabric)', osi: 3,
     blurb: 'Private routing between two networks without crossing the public internet.',
   },
   attach: {
-    label: 'Attachment', kind: 'fabric', color: '#8a9bbd', osi: 3,
+    label: 'Attachment', kind: 'fabric', color: 'var(--color-flow-fabric)', osi: 3,
     blurb: 'A resource bound to a network or a host rather than talking over one.',
   },
   schedule: {
@@ -111,7 +116,7 @@ export const FLOW_META: Record<Flow, FlowMeta> = {
     blurb: 'The control plane placing a workload onto capacity that can run it.',
   },
   backup: {
-    label: 'Backup', kind: 'data', color: '#9ad5a0', osi: 7,
+    label: 'Backup', kind: 'data', color: 'var(--color-flow-backup)', osi: 7,
     blurb: 'A copy you can restore from. Untested backups are folklore, not a recovery plan.',
   },
 }
@@ -119,11 +124,11 @@ export const FLOW_META: Record<Flow, FlowMeta> = {
 export const EDGE_KIND_META: Record<EdgeKind, { label: string; color: string }> = {
   network: { label: 'Network', color: 'var(--color-flux)' },
   data: { label: 'Data', color: 'var(--color-vault)' },
-  identity: { label: 'Identity', color: '#ffc46b' },
-  dns: { label: 'DNS', color: '#c9a7ff' },
+  identity: { label: 'Identity', color: 'var(--color-flow-identity)' },
+  dns: { label: 'DNS', color: 'var(--color-flow-dns)' },
   observability: { label: 'Observability', color: 'var(--color-ink-faint)' },
-  deploy: { label: 'Delivery', color: '#a0ffc4' },
-  fabric: { label: 'Fabric', color: '#8a9bbd' },
+  deploy: { label: 'Delivery', color: 'var(--color-flow-deploy)' },
+  fabric: { label: 'Fabric', color: 'var(--color-flow-fabric)' },
 }
 
 export function flowKind(flow: Flow): EdgeKind {

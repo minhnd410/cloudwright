@@ -223,7 +223,7 @@ export function Canvas() {
           variant={BackgroundVariant.Dots}
           gap={26}
           size={1}
-          color="var(--color-line)"
+          color="var(--canvas-dot)"
           className="opacity-60"
         />
       </ReactFlow>

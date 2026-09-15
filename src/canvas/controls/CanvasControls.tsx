@@ -5,11 +5,29 @@ import { getResource } from '@/catalog/registry'
 import type { CwNode } from '@/store/types'
 import { useGame } from '@/store/gameStore'
 import { useUi } from '@/store/uiStore'
+import { useTheme } from '@/store/themeStore'
 
 const STATUS_COLOR: Record<string, string> = {
-  idle: '#3a4a66', healthy: '#38e0c8', saturated: '#ffa94d',
-  degraded: '#ff5f6d', down: '#ff5f6d', breached: '#ff3d9e',
+  idle: 'var(--color-line-bright)', healthy: 'var(--color-signal)', saturated: 'var(--color-ember)',
+  degraded: 'var(--color-alarm)', down: 'var(--color-alarm)', breached: 'var(--color-toxic)',
 }
+
+/**
+ * The minimap paints node fills as SVG presentation attributes, which do not
+ * substitute custom properties. Colour them by class instead (see styles.css)
+ * so they follow the theme like everything else.
+ */
+const STATUS_CLASS: Record<string, string> = {
+  healthy: 'cw-mm-healthy', saturated: 'cw-mm-saturated', degraded: 'cw-mm-degraded',
+  down: 'cw-mm-down', breached: 'cw-mm-breached',
+}
+
+/**
+ * The mask is the one colour that has to be a literal, for the same reason. It
+ * dims what is off-screen in both themes — a pale mask on a pale minimap would
+ * leave the viewport rectangle invisible.
+ */
+const MASK_COLOR = { dark: 'rgba(5, 7, 13, 0.72)', light: 'rgba(70, 86, 111, 0.28)' }
 
 function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
   return (
@@ -34,6 +52,7 @@ export function CanvasControls() {
   const arrange = useGame((s) => s.arrange)
   // The replay transport occupies the same corner; the minimap can wait.
   const replaying = useGame((s) => s.replay !== null)
+  const theme = useTheme((s) => s.resolved)
   if (chromeless) return null
 
   return (
@@ -113,13 +132,13 @@ export function CanvasControls() {
           pannable
           zoomable
           className="!bottom-4 !right-4 !m-0 !rounded-xl !border !border-line !bg-abyss/90 !backdrop-blur"
-          maskColor="rgba(5, 7, 13, 0.72)"
+          maskColor={MASK_COLOR[theme]}
           nodeStrokeWidth={2}
-          nodeColor={(node) => {
+          nodeClassName={(node) => {
             const status = sim?.nodes[node.id]?.status ?? 'idle'
-            if (status !== 'idle') return STATUS_COLOR[status]
+            if (status !== 'idle') return STATUS_CLASS[status] ?? 'cw-mm-idle'
             const def = getResource(String((node as CwNode).data?.defId))
-            return def?.container ? '#1b2537' : '#2e3f5c'
+            return def?.container ? 'cw-mm-container' : 'cw-mm-idle'
           }}
         />
       )}

@@ -91,6 +91,8 @@ export interface RenderOptions {
   incidents?: { nodeId: string; modeId: string }[]
   loadMultiplier?: number
   attacksEnabled?: boolean
+  /** Defaults to dark, which is what the app looks like out of the box. */
+  theme?: 'light' | 'dark'
 }
 
 interface Session {
@@ -112,6 +114,7 @@ async function openSession(appUrl: string, options: RenderOptions): Promise<Sess
     args: ['--no-sandbox', '--disable-dev-shm-usage', '--force-color-profile=srgb', '--hide-scrollbars'],
   })
   const page = await browser.newPage()
+  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: options.theme ?? 'dark' }])
   await page.setViewport({
     width: options.width ?? 1440,
     height: options.height ?? 900,
@@ -119,7 +122,7 @@ async function openSession(appUrl: string, options: RenderOptions): Promise<Sess
   })
 
   const encoded = encodeShareLink(options.diagram)
-  await page.goto(`${appUrl}/build?chrome=off&d=${encoded}`, { waitUntil: 'networkidle0', timeout: 30000 })
+  await page.goto(`${appUrl}/build?chrome=off&theme=${options.theme ?? 'dark'}&d=${encoded}`, { waitUntil: 'networkidle0', timeout: 30000 })
   await page.waitForFunction('window.__cloudwright?.ready === true', { timeout: 15000 })
   await page.waitForSelector('.react-flow__node', { timeout: 15000 })
   // Let the fit-to-view settle before anything is captured.

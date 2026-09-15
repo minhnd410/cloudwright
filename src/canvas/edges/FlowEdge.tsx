@@ -72,7 +72,7 @@ export const FlowEdge = memo(function FlowEdge({
         style={{
           stroke: colour,
           strokeWidth: selected || hovered ? 2.4 : active ? 1.9 : 1.3,
-          opacity: active ? 0.9 : 0.42,
+          opacity: active ? 0.9 : 'var(--edge-idle-opacity)',
           transition: 'stroke-width 0.15s, opacity 0.25s',
         }}
       />
@@ -82,18 +82,17 @@ export const FlowEdge = memo(function FlowEdge({
         <path
           d={path}
           fill="none"
-          stroke={colour}
           strokeWidth={2.6}
           strokeLinecap="round"
           strokeDasharray="1 14"
           opacity={0.75}
-          style={{ animation: `dash ${1.4 / Math.max(speed, 1)}s linear infinite` }}
+          style={{ stroke: colour, animation: `dash ${1.4 / Math.max(speed, 1)}s linear infinite` }}
         />
       )}
 
       {/* Packets travelling along the wire */}
       {Array.from({ length: packets }).map((_, i) => (
-        <circle key={i} r={attackShare > 0.15 ? 3.4 : 2.6} fill={colour}>
+        <circle key={i} r={attackShare > 0.15 ? 3.4 : 2.6} style={{ fill: colour }}>
           <animateMotion
             dur={`${travelSeconds}s`}
             repeatCount="indefinite"

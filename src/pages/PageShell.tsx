@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import clsx from 'clsx'
 import { Logo } from '@/ui/Logo'
+import { ThemeToggle } from '@/ui/ThemeToggle'
 
 export function PageShell({
   eyebrow, title, lede, children, back, narrow,
@@ -24,6 +25,7 @@ export function PageShell({
             <NavLink to="/build">Build</NavLink>
             <NavLink to="/missions">Missions</NavLink>
             <NavLink to="/codex">Codex</NavLink>
+            <ThemeToggle className="ml-1" />
           </nav>
         </div>
       </header>

@@ -4,12 +4,14 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useGame, type SimSpeed } from '@/store/gameStore'
 import { useTabs } from '@/store/tabStore'
 import { PANEL_META, useUi, type PanelId } from '@/store/uiStore'
+import { THEME_META, useTheme, type ThemePref } from '@/store/themeStore'
 import { formatCurrency } from '@/sim/cost'
 import { serialize, encodeShareLink } from '@/store/serialize'
 import { downloadJson, downloadRecording, parseDiagram, pickJsonFile } from '@/store/files'
 import { parseRecording } from '@/sim/recording'
 import { Logo } from '@/ui/Logo'
 import { Menu } from '@/ui/Menu'
+import { ThemeToggle } from '@/ui/ThemeToggle'
 import { SHORTCUTS } from './useSimLoop'
 
 export function TopBar() {
@@ -95,6 +97,7 @@ export function TopBar() {
           </span>
         </div>
 
+        <ThemeToggle />
         <ShortcutsHelp />
         <NavLinks />
       </div>
@@ -201,6 +204,8 @@ function ViewMenu() {
   const panels = useUi((s) => s.panels)
   const toggle = useUi((s) => s.toggle)
   const showAll = useUi((s) => s.showAll)
+  const pref = useTheme((s) => s.pref)
+  const setPref = useTheme((s) => s.setPref)
   const hidden = (Object.keys(panels) as PanelId[]).filter((p) => !panels[p]).length
 
   return (
@@ -222,6 +227,14 @@ function ViewMenu() {
           onSelect: () => toggle(id),
         })),
         { id: 'all', label: 'Show every panel', separated: true, onSelect: showAll },
+        ...(Object.keys(THEME_META) as ThemePref[]).map((id, i) => ({
+          id: `theme-${id}`,
+          label: `${THEME_META[id].label} theme`,
+          hint: THEME_META[id].hint,
+          checked: pref === id,
+          separated: i === 0,
+          onSelect: () => setPref(id),
+        })),
       ]}
     />
   )

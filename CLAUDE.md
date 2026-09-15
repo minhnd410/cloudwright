@@ -74,6 +74,24 @@ The code is written to be read. A few things worth matching:
 - **Use `danger` for the production footguns.** It feeds the node warning badge, the
   inspector and the architecture review at once.
 
+## Colour and theming
+
+There is one palette, defined as CSS custom properties in `src/styles.css`. Dark is
+the base `@theme` block; `:root[data-theme='light']` redefines the same variable
+names, so components use `bg-surface` and `text-ink-dim` and never a `dark:` variant.
+An inline script in `index.html` stamps `data-theme` before the first paint — a React
+effect would flash a full screen of the wrong colour.
+
+- **Never write a hex literal in a component.** Add a token instead. Every light value
+  was checked to clear 4.5:1 against the canvas ground; a stray literal will not be.
+- **SVG presentation attributes do not substitute `var()`** in every browser. Apply
+  colours through `style={{ fill }}` / `style={{ stroke }}`, or by class. This is why
+  the minimap colours nodes with `nodeClassName` and why its `maskColor` is one of the
+  two literals in the codebase (`CanvasControls.tsx`, commented).
+- `--cw-glow` and `--cw-lift` exist because depth reads differently on each ground: a
+  coloured glow is energy on black and a smudge on paper. Compose both; each theme
+  zeroes the one it does not want.
+
 ## Adding things
 
 ### A cloud service
