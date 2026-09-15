@@ -200,7 +200,14 @@ box, which makes it large (~1.8GB). Everything else works without them.
 
 ### Deploying
 
-Static files — Cloudflare Pages, Netlify, GitHub Pages, any bucket.
+Static files — Cloudflare Pages, Netlify, GitHub Pages, any bucket. This one runs on
+Cloudflare Pages:
+
+```bash
+npm run deploy     # builds and uploads to cloudwright.pages.dev
+```
+
+Or connect the repository in the Cloudflare dashboard for a deploy on every push:
 
 | Setting | Value |
 | --- | --- |

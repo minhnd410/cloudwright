@@ -12,7 +12,7 @@
     "typecheck": "tsc -b --noEmit",
     "lint": "oxlint",
     "check": "npm run typecheck && npm run lint && npm run test",
-    "deploy": "npm run build && wrangler pages deploy dist --project-name cloudwright",
+    "deploy": "npm run build && wrangler pages deploy dist --project-name cloudwright --branch main",
     "dev:mcp": "node scripts/dev.mjs --enable-mcp",
     "build:mcp": "vite build --config vite.mcp.config.ts",
     "mcp": "node dist-mcp/stdio.mjs"
@@ -46,5 +46,29 @@
   "description": "Build the cloud, break it, defend it — a browser game for learning cloud infrastructure, DevOps, Kubernetes and security.",
   "bin": {
     "cloudwright-mcp": "dist-mcp/stdio.mjs"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/minhnd410/cloudwright.git"
+  },
+  "homepage": "https://cloudwright.pages.dev",
+  "bugs": {
+    "url": "https://github.com/minhnd410/cloudwright/issues"
+  },
+  "license": "MIT",
+  "keywords": [
+    "cloud",
+    "aws",
+    "azure",
+    "gcp",
+    "kubernetes",
+    "devops",
+    "sre",
+    "architecture",
+    "simulation",
+    "education",
+    "game",
+    "mcp",
+    "model-context-protocol"
+  ]
 }
