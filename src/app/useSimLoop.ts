@@ -1,5 +1,7 @@
 import { useEffect } from 'react'
 import { useGame } from '@/store/gameStore'
+import { useTabs } from '@/store/tabStore'
+import { useUi, type PanelId } from '@/store/uiStore'
 
 const BASE_TICK_MS = 700
 
@@ -18,17 +20,20 @@ export function useSimLoop() {
   }, [speed, step])
 }
 
-/** Autosaves the diagram shortly after it stops changing. */
+/** Autosaves the whole workspace shortly after the active document changes. */
 export function useAutosave() {
   const nodes = useGame((s) => s.nodes)
   const edges = useGame((s) => s.edges)
   const name = useGame((s) => s.name)
-  const save = useGame((s) => s.save)
 
   useEffect(() => {
-    const timer = setTimeout(save, 900)
+    const timer = setTimeout(() => {
+      const tabs = useTabs.getState()
+      tabs.syncActive()
+      tabs.persist()
+    }, 900)
     return () => clearTimeout(timer)
-  }, [nodes, edges, name, save])
+  }, [nodes, edges, name])
 }
 
 /** Keyboard shortcuts that make the canvas feel like a real tool. */
@@ -45,6 +50,7 @@ export const SHORTCUTS: Shortcut[] = [
   { keys: '⌘Z / Ctrl+Z', action: 'Undo' },
   { keys: '⇧⌘Z / Ctrl+Y', action: 'Redo' },
   { keys: '⌘D / Ctrl+D', action: 'Duplicate the selected resource' },
+  { keys: '⌘1 / ⌘2 / ⌘3', action: 'Show or hide the palette, inspector, telemetry' },
   { keys: 'Delete', action: 'Remove the selection' },
   { keys: 'Esc', action: 'Deselect and dismiss' },
 ]
@@ -70,6 +76,10 @@ export function useShortcuts() {
         } else if (key === 'd' && store.selectedNodeId) {
           event.preventDefault()
           store.duplicateNode(store.selectedNodeId)
+        } else if (key === '1' || key === '2' || key === '3') {
+          event.preventDefault()
+          const panel = ({ '1': 'palette', '2': 'inspector', '3': 'telemetry' } as Record<string, PanelId>)[key]
+          useUi.getState().toggle(panel)
         }
         return
       }

@@ -2,7 +2,8 @@ import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useSearchParams } from 'react-router-dom'
 import { Workspace } from './Workspace'
 import { HomePage } from '@/pages/HomePage'
-import { useGame } from '@/store/gameStore'
+import { ensureWorkspace, useTabs } from '@/store/tabStore'
+import { useUi } from '@/store/uiStore'
 import { wireMissionEvaluation } from '@/store/missionStore'
 import { decodeShareLink } from '@/store/serialize'
 
@@ -48,18 +49,24 @@ function ShareLinkLoader() {
   const [params, setParams] = useSearchParams()
 
   useEffect(() => {
+    // `?chrome=off` strips every panel — used by embeds and by the MCP server
+    // when it captures a screenshot or a video of a diagram.
+    if (params.get('chrome') === 'off') useUi.getState().setChromeless(true)
+
     const encoded = params.get('d')
     if (encoded) {
       const diagram = decodeShareLink(encoded)
       if (diagram) {
-        useGame.getState().load(diagram)
+        ensureWorkspace()
+        useTabs.getState().open(diagram)
         const next = new URLSearchParams(params)
         next.delete('d')
+        next.delete('chrome')
         setParams(next, { replace: true })
         return
       }
     }
-    if (useGame.getState().nodes.length === 0) useGame.getState().restore()
+    ensureWorkspace()
     // Run once on mount; later param changes are navigation, not a fresh load.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

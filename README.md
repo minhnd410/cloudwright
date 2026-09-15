@@ -40,7 +40,17 @@ Azure and GCP equivalents sit side by side. Learn the shape once; it transfers.
 
 **A campaign and a codex.** Ten missions built around problems people have actually been paged
 for, and 105 codex entries covering networking, compute, data, reliability, security,
-operations and Kubernetes — several with interactive explainers.
+operations and Kubernetes. Every entry carries a *runnable* illustration — usually the same
+architecture twice, with and without the thing the entry is about, so the difference is
+something you watch rather than something you are told.
+
+**Record and replay.** Capture a run tick by tick, then scrub through it. Incidents and
+breaches are marked on the track, so an outage can be examined a second at a time. Recordings
+export to JSON and can be rendered to video through the MCP server.
+
+**An MCP server.** Point a model at Cloudwright and it can read the whole catalog, author and
+validate architectures, simulate them, review them, and look at screenshots and video of its
+own work. See [Driving it from a model](#driving-it-from-a-model).
 
 ---
 
@@ -48,13 +58,91 @@ operations and Kubernetes — several with interactive explainers.
 
 ```bash
 npm install
-npm run dev      # http://localhost:5173
+npm run dev                  # http://localhost:5173
+npm run dev -- --enable-mcp  # …and an MCP endpoint at /mcp
 ```
 
 ```bash
 npm run check    # typecheck + lint + tests
-npm run build    # production build into dist/
+npm run build    # production build into dist/ (and the MCP server into dist-mcp/)
 ```
+
+### Working in it
+
+Diagrams open in **tabs** — the tab carries the name, and double-clicking one renames it.
+**File** handles new, duplicate, JSON import and export, share links and recordings; **View**
+shows and hides the three panels. A hidden panel leaves a labelled strip behind, so it is
+always obvious both that something is hidden and what it was.
+
+| | |
+| --- | --- |
+| `Space` | Play or pause |
+| `R` / `X` | Reset the simulation / break something at random |
+| `⌘Z` `⇧⌘Z` | Undo, redo |
+| `⌘D` | Duplicate the selected resource |
+| `⌘1` `⌘2` `⌘3` | Palette, inspector, telemetry |
+
+Everything is stored locally. A diagram can also be shared as a URL — the whole architecture is
+compressed into the link, so nothing is uploaded anywhere.
+
+## Driving it from a model
+
+Cloudwright ships an MCP server that exposes the catalog, the simulator, the reviewer and the
+renderer. A model can design an architecture, find out whether it actually serves the traffic,
+read what a senior engineer would say about it, and then *look at a screenshot of its own work*.
+
+```bash
+npm run build          # builds the app and the MCP server
+npm run mcp            # stdio, for a desktop MCP client
+```
+
+```json
+{
+  "mcpServers": {
+    "cloudwright": {
+      "command": "node",
+      "args": ["/absolute/path/to/cloudwright/dist-mcp/stdio.mjs"]
+    }
+  }
+}
+```
+
+Or over HTTP while developing:
+
+```bash
+npm run dev -- --enable-mcp   # streamable HTTP at http://localhost:5173/mcp
+```
+
+### What it exposes
+
+| Tool | What it does |
+| --- | --- |
+| `list_resources` · `describe_resource` | The catalog, including every property with its default, its options, and what changing it does |
+| `list_archetypes` | The same service across all four providers — the translation table |
+| `suggest_ports` · `validate_connection` | Whether two resources can connect, and the reasoning either way |
+| `create_diagram` | Builds an architecture from a description. Ports are resolved and the layout computed, so no port ids or coordinates are needed |
+| `arrange_diagram` | Re-lays out an existing diagram by dependency depth |
+| `simulate` | Runs traffic through it: throughput, errors, latency, cost, availability, per-node state |
+| `review_diagram` | The five-pillar architecture review |
+| `compare_diagrams` | Two architectures side by side with the deltas — "is this change actually better?" |
+| `screenshot_diagram` | A PNG rendered by the real application, plus the simulation state at that moment |
+| `record_video` | An MP4 of a run, with failures injected on a timeline so the video tells a story |
+| `list_failure_modes` · `list_attack_vectors` | Everything that can break, and every attack modelled |
+| `list_concepts` · `get_concept` · `list_missions` · `get_mission` · `list_templates` | The written material and the scenarios |
+| `share_url` | A link that opens the diagram in the app |
+
+Resources: `cloudwright://catalog`, `cloudwright://providers`, `cloudwright://authoring`.
+
+An illegal connection does not produce a broken file — it comes back with the explanation a
+player would see, which is usually the answer to the design question that was really being
+asked:
+
+> The public internet cannot reach a database directly. A database speaks SQL on a private
+> port, not HTTP… Hint: route through a load balancer → compute tier → database.
+
+**Screenshots and video** drive a real browser. They need a Chromium-based browser
+(`CLOUDWRIGHT_BROWSER` overrides the search) and, for video, `ffmpeg`. If no dev server is
+running they serve `dist/` themselves, so a plain checkout works after `npm run build`.
 
 ## Deploying to Cloudflare Pages
 
@@ -94,13 +182,15 @@ src/
     attacks.ts  Attack propagation and what each control actually stops
     advisor.ts  The architecture review
     incidents.ts Failure injection and chaos mode
-  canvas/       React Flow integration: nodes, animated edges, drag-and-drop
+  canvas/       React Flow integration: nodes, animated edges, drag-and-drop, layout
   panels/       Palette, inspector, review, observability
   codex/        The written material and its interactive widgets
   scenarios/    Missions, reference templates, objective evaluation
-  store/        Zustand stores and serialisation
+  store/        Zustand stores — document, tabs, panels — and serialisation
   pages/        Landing, missions, codex
-tests/          Catalog validation, engine behaviour, mission solvability
+mcp/            The MCP server: tools, transports, and browser rendering
+scripts/        The dev launcher that understands --enable-mcp
+tests/          Catalog validation, engine behaviour, mission solvability, authoring
 ```
 
 ### The two ideas that hold it together
@@ -156,6 +246,13 @@ Two rules worth keeping:
 Add a `Concept` to the right file in `src/codex/topics/` and export it. Reference it from a
 resource's `concepts` array or another entry's `related`. Tests fail on dangling links, so the
 two stay in sync. Set `widget` to attach one of the interactive explainers.
+
+### A new codex demo
+
+Add an entry to `DEMOS` in `src/codex/demos.ts`, keyed by concept id. Give it two variants —
+with and without the thing the entry is about — and the article gets a runnable comparison.
+Entries with no explicit demo fall back to the reference architecture closest to their subject,
+so nothing is ever left without something to press play on.
 
 ### A new mission
 

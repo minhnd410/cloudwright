@@ -10,8 +10,10 @@ import { review, scoreFindings, type Finding } from '@/sim/advisor'
 import { tick as simTick } from '@/sim/engine'
 import { expireIncidents, makeIncident, maybeInjectChaos, possibleIncidents } from '@/sim/incidents'
 import type { ActiveIncident, SimEvent, SimGraph, SimState } from '@/sim/types'
+import { appendFrame, newRecording, type Recording } from '@/sim/recording'
 import type { CwEdge, CwEdgeData, CwNode, SavedDiagram } from './types'
-import { serialize } from './serialize'
+import { serialize, toFlow } from './serialize'
+import { autoLayout } from '@/canvas/layout'
 
 const STORAGE_KEY = 'cloudwright:diagram:v1'
 const MAX_EVENTS = 220
@@ -63,6 +65,20 @@ export interface GameState {
   findings: Finding[]
   score: number
 
+  // ── Recording & replay ──
+  /** Capturing every tick while the simulation runs. */
+  recording: Recording | null
+  /** A loaded recording being played back; the canvas renders its frames. */
+  replay: { recording: Recording; index: number; playing: boolean } | null
+
+  startRecording: () => void
+  stopRecording: () => Recording | null
+  loadReplay: (recording: Recording) => void
+  exitReplay: () => void
+  seekReplay: (index: number) => void
+  setReplayPlaying: (playing: boolean) => void
+  advanceReplay: () => void
+
   // ── History ──
   past: Snapshot[]
   future: Snapshot[]
@@ -81,6 +97,8 @@ export interface GameState {
   undo: () => void
   redo: () => void
   duplicateNode: (nodeId: string) => void
+  /** Re-lays out the whole diagram by dependency depth. */
+  arrange: () => void
 
   addNode: (defId: string, position: { x: number; y: number }, parentId?: string) => string
   removeNodes: (ids: string[]) => void
@@ -159,6 +177,9 @@ export const useGame = create<GameState>((set, get) => ({
   findings: [],
   score: 100,
 
+  recording: null,
+  replay: null,
+
   past: [],
   future: [],
   canUndo: false,
@@ -167,6 +188,65 @@ export const useGame = create<GameState>((set, get) => ({
   rejected: null,
   hoveredNodeId: null,
   fitSignal: 0,
+
+  // ── Recording & replay ────────────────────────────────────────────────────
+
+  startRecording: () => {
+    const { name, nodes, edges } = get()
+    set({ recording: newRecording(name, serialize(name, nodes, edges)), replay: null })
+    if (get().speed === 0) set({ speed: 1 })
+  },
+
+  stopRecording: () => {
+    const recording = get().recording
+    set({ recording: null })
+    return recording && recording.frames.length > 0 ? recording : null
+  },
+
+  loadReplay: (recording) => {
+    const first = recording.frames[0]
+    set({
+      replay: { recording, index: 0, playing: false },
+      speed: 0,
+      recording: null,
+      sim: first?.state ?? null,
+      incidents: first?.incidents ?? [],
+      events: first?.state.events ?? [],
+    })
+  },
+
+  exitReplay: () => set({ replay: null, sim: null, incidents: [], events: [] }),
+
+  seekReplay: (index) => {
+    const replay = get().replay
+    if (!replay) return
+    const clamped = Math.max(0, Math.min(index, replay.recording.frames.length - 1))
+    const frame = replay.recording.frames[clamped]
+    set({
+      replay: { ...replay, index: clamped },
+      sim: frame.state,
+      incidents: frame.incidents,
+      // Show the log as it stood at this moment, not the whole recording.
+      events: replay.recording.frames.slice(0, clamped + 1).flatMap((f) => f.state.events).slice(-MAX_EVENTS),
+    })
+  },
+
+  setReplayPlaying: (playing) => {
+    const replay = get().replay
+    if (!replay) return
+    set({ replay: { ...replay, playing } })
+  },
+
+  advanceReplay: () => {
+    const replay = get().replay
+    if (!replay) return
+    const next = replay.index + 1
+    if (next >= replay.recording.frames.length) {
+      set({ replay: { ...replay, playing: false } })
+      return
+    }
+    get().seekReplay(next)
+  },
 
   // ── History ───────────────────────────────────────────────────────────────
 
@@ -230,6 +310,14 @@ export const useGame = create<GameState>((set, get) => ({
     }
     set((s) => ({ nodes: [...s.nodes, copy], selectedNodeId: id, selectedEdgeId: null }))
     get().runReview()
+  },
+
+  arrange: () => {
+    const { name, nodes, edges } = get()
+    if (nodes.length === 0) return
+    get().commit()
+    get().load(autoLayout(serialize(name, nodes, edges)))
+    set((s) => ({ fitSignal: s.fitSignal + 1 }))
   },
 
   // ── Diagram mutation ──────────────────────────────────────────────────────
@@ -382,6 +470,8 @@ export const useGame = create<GameState>((set, get) => ({
 
   step: () => {
     const state = get()
+    // Replaying renders recorded frames; stepping the engine would fight it.
+    if (state.replay) return
     const graph = state.toSimGraph()
     const nextTick = (state.sim?.tick ?? 0) + 1
 
@@ -402,11 +492,15 @@ export const useGame = create<GameState>((set, get) => ({
     })
 
     const events = [...state.events, ...sim.events].slice(-MAX_EVENTS)
-    set({ sim, incidents, events, history: pushHistory(state.history, sim) })
+    const recording = state.recording ? appendFrame(state.recording, sim, incidents) : null
+    set({ sim, incidents, events, history: pushHistory(state.history, sim), recording })
   },
 
   resetSim: () =>
-    set({ sim: null, incidents: [], events: [], history: emptyHistory(), speed: 0 }),
+    set({
+      sim: null, incidents: [], events: [], history: emptyHistory(), speed: 0,
+      replay: null, recording: null,
+    }),
 
   toggleChaos: () => set((s) => ({ chaosMode: !s.chaosMode })),
   setAttacksEnabled: (on) => set({ attacksEnabled: on }),
@@ -489,34 +583,7 @@ export const useGame = create<GameState>((set, get) => ({
   },
 
   load: (diagram) => {
-    const nodes: CwNode[] = diagram.nodes
-      .filter((n) => getResource(n.defId))
-      .map((n) => {
-        const def = requireResource(n.defId)
-        return {
-          id: n.id,
-          type: def.container ? 'container' : 'resource',
-          position: { x: n.x, y: n.y },
-          data: { defId: n.defId, label: n.label, props: { ...defaultProps(def), ...n.props } },
-          ...(def.container
-            ? { style: { width: n.w ?? def.container.size?.width ?? 320, height: n.h ?? def.container.size?.height ?? 240 }, zIndex: -1 }
-            : {}),
-          ...(n.parentId ? { parentId: n.parentId, extent: 'parent' as const } : {}),
-        }
-      })
-
-    const ids = new Set(nodes.map((n) => n.id))
-    const edges: CwEdge[] = diagram.edges
-      .filter((e) => ids.has(e.source) && ids.has(e.target))
-      .map((e) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        sourceHandle: e.sourceHandle,
-        targetHandle: e.targetHandle,
-        type: 'flow',
-        data: { flow: e.flow, flows: e.flows },
-      }))
+    const { nodes, edges } = toFlow(diagram)
 
     nodeSeq = nodes.reduce((max, n) => Math.max(max, Number(n.id.replace(/\D/g, '')) || 0), 0) + 1
 
@@ -527,6 +594,7 @@ export const useGame = create<GameState>((set, get) => ({
       sim: null, incidents: [], events: [], history: emptyHistory(), speed: 0,
       fitSignal: s.fitSignal + 1,
       past: [], future: [], canUndo: false, canRedo: false,
+      recording: null, replay: null,
     }))
     get().runReview()
   },

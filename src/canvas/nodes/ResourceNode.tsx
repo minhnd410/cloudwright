@@ -3,8 +3,8 @@ import { Handle, NodeResizer, type NodeProps } from '@xyflow/react'
 import clsx from 'clsx'
 import { getResource, dangerWarnings, PROVIDER_META } from '@/catalog/registry'
 import { ResourceIcon } from '@/ui/ResourceIcon'
-import { useGame } from '@/store/gameStore'
 import type { CwNode } from '@/store/types'
+import { useNodeIncidentCount, useNodeSimState, useSimRunning } from '../simView'
 import type { NodeState } from '@/sim/types'
 import { placePorts, handleStyle } from './ports'
 
@@ -27,9 +27,9 @@ function formatRps(v: number) {
 
 export const ResourceNode = memo(function ResourceNode({ id, data, selected }: NodeProps<CwNode>) {
   const def = getResource(data.defId)
-  const state = useGame((s) => s.sim?.nodes[id])
-  const running = useGame((s) => s.sim !== null)
-  const incidentCount = useGame((s) => s.incidents.filter((i) => i.nodeId === id).length)
+  const state = useNodeSimState(id)
+  const running = useSimRunning()
+  const incidentCount = useNodeIncidentCount(id)
 
   if (!def) {
     return (
@@ -158,7 +158,7 @@ export const ResourceNode = memo(function ResourceNode({ id, data, selected }: N
 
 export const ContainerNode = memo(function ContainerNode({ id, data, selected }: NodeProps<CwNode>) {
   const def = getResource(data.defId)
-  const state = useGame((s) => s.sim?.nodes[id])
+  const state = useNodeSimState(id)
   if (!def) return null
 
   const provider = PROVIDER_META[def.provider]

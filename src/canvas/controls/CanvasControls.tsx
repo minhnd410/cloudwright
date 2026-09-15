@@ -4,6 +4,7 @@ import { EDGE_KIND_META } from '@/catalog/schema/flows'
 import { getResource } from '@/catalog/registry'
 import type { CwNode } from '@/store/types'
 import { useGame } from '@/store/gameStore'
+import { useUi } from '@/store/uiStore'
 
 const STATUS_COLOR: Record<string, string> = {
   idle: '#3a4a66', healthy: '#38e0c8', saturated: '#ffa94d',
@@ -29,10 +30,15 @@ export function CanvasControls() {
   const [showLegend, setShowLegend] = useState(false)
   const sim = useGame((s) => s.sim)
   const isEmpty = useGame((s) => s.nodes.length === 0)
+  const chromeless = useUi((s) => s.chromeless)
+  const arrange = useGame((s) => s.arrange)
+  // The replay transport occupies the same corner; the minimap can wait.
+  const replaying = useGame((s) => s.replay !== null)
+  if (chromeless) return null
 
   return (
     <>
-      <div className="absolute bottom-4 left-4 z-30 flex flex-col gap-1.5">
+      <div className="absolute bottom-4 left-4 z-30 flex items-end gap-1.5">
         <div className="panel flex flex-col rounded-xl p-1">
           <IconButton label="Zoom in" onClick={() => zoomIn({ duration: 180 })}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -49,6 +55,14 @@ export function CanvasControls() {
               <path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15" />
             </svg>
           </IconButton>
+          <IconButton label="Arrange automatically" onClick={arrange}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2.5" y="9" width="6" height="6" rx="1.4" />
+              <rect x="15.5" y="4" width="6" height="6" rx="1.4" />
+              <rect x="15.5" y="14" width="6" height="6" rx="1.4" />
+              <path d="M8.5 12h3.5M12 12V7h3.5M12 12v5h3.5" />
+            </svg>
+          </IconButton>
           <IconButton label="Toggle minimap" onClick={() => setShowMap((v) => !v)}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
               <path d="M9 4 3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4Z" />
@@ -62,8 +76,13 @@ export function CanvasControls() {
           </IconButton>
         </div>
 
+        {/* Beside the buttons rather than above them, and scrollable, so a short
+            canvas never clips it. */}
         {showLegend && (
-          <div className="panel w-52 rounded-xl p-3" style={{ animation: 'var(--animate-float-in)' }}>
+          <div
+            className="panel max-h-[min(340px,calc(100vh-14rem))] w-52 overflow-y-auto rounded-xl p-3"
+            style={{ animation: 'var(--animate-float-in)' }}
+          >
             <h4 className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint">Connection types</h4>
             <ul className="mt-2 space-y-1.5">
               {Object.entries(EDGE_KIND_META).map(([kind, meta]) => (
@@ -88,7 +107,7 @@ export function CanvasControls() {
         )}
       </div>
 
-      {showMap && !isEmpty && (
+      {showMap && !isEmpty && !replaying && (
         <MiniMap
           position="bottom-right"
           pannable

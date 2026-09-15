@@ -204,3 +204,19 @@ describe('cost', () => {
     expect(ha.nodes.db.costPerHour).toBeGreaterThan(single.nodes.db.costPerHour * 1.8)
   })
 })
+
+describe('configuration', () => {
+  it('ignores undefined overrides rather than replacing defaults', () => {
+    const graph = threeTier()
+    const explicit = run(graph, 2, { loadMultiplier: undefined, attacksEnabled: undefined })
+    const implicit = run(graph, 2)
+    expect(Number.isFinite(explicit.metrics.totalDemand)).toBe(true)
+    expect(explicit.metrics.totalDemand).toBe(implicit.metrics.totalDemand)
+  })
+
+  it('applies a load multiplier when one is given', () => {
+    const single = run(threeTier(), 2, { loadMultiplier: 1 })
+    const triple = run(threeTier(), 2, { loadMultiplier: 3 })
+    expect(triple.metrics.totalDemand).toBeCloseTo(single.metrics.totalDemand * 3, 0)
+  })
+})

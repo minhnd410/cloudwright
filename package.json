@@ -4,17 +4,21 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "node scripts/dev.mjs",
+    "build": "tsc -b && vite build && vite build --config vite.mcp.config.ts",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -b --noEmit",
     "lint": "oxlint",
     "check": "npm run typecheck && npm run lint && npm run test",
-    "deploy": "npm run build && wrangler pages deploy dist --project-name cloudwright"
+    "deploy": "npm run build && wrangler pages deploy dist --project-name cloudwright",
+    "dev:mcp": "node scripts/dev.mjs --enable-mcp",
+    "build:mcp": "vite build --config vite.mcp.config.ts",
+    "mcp": "node dist-mcp/stdio.mjs"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@xyflow/react": "^12.11.6",
     "clsx": "^2.1.1",
     "lucide-react": "^1.46.0",
@@ -22,6 +26,7 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.3",
+    "zod": "^4.6.5",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
@@ -32,10 +37,14 @@
     "@vitejs/plugin-react": "^6.1.1",
     "@vitest/coverage-v8": "^5.0.0",
     "oxlint": "^1.81.0",
+    "puppeteer-core": "^25.11.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
     "vitest": "^5.0.0"
   },
-  "description": "Build the cloud, break it, defend it — a browser game for learning cloud infrastructure, DevOps, Kubernetes and security."
+  "description": "Build the cloud, break it, defend it — a browser game for learning cloud infrastructure, DevOps, Kubernetes and security.",
+  "bin": {
+    "cloudwright-mcp": "dist-mcp/stdio.mjs"
+  }
 }

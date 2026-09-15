@@ -77,8 +77,10 @@
 
 @layer components {
   .panel {
-    background: color-mix(in oklab, var(--color-surface) 82%, transparent);
-    backdrop-filter: blur(16px) saturate(1.3);
+    /* Nearly opaque: menus and popovers sit over dense canvas content, and
+       anything translucent enough to read through is hard to read. */
+    background: color-mix(in oklab, var(--color-surface) 97%, transparent);
+    backdrop-filter: blur(18px) saturate(1.3);
     border: 1px solid var(--color-line);
   }
   .glow-ring { box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-signal) 40%, transparent), 0 0 24px -4px color-mix(in oklab, var(--color-signal) 45%, transparent); }

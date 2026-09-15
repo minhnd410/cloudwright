@@ -43,7 +43,12 @@ export interface TickInput {
  * engine testable without a browser.
  */
 export function tick(input: TickInput): SimState {
-  const config: SimConfig = { ...DEFAULT_CONFIG, ...input.config }
+  // Spreading a partial config would let an explicit `undefined` overwrite a
+  // default — which silently turns the traffic rate into NaN.
+  const config: SimConfig = { ...DEFAULT_CONFIG }
+  for (const [key, value] of Object.entries(input.config ?? {})) {
+    if (value !== undefined) Reflect.set(config, key, value)
+  }
   const prev = input.previous
   const tickNo = (prev?.tick ?? 0) + 1
   const elapsed = (prev?.elapsed ?? 0) + config.secondsPerTick

@@ -1,8 +1,11 @@
 import { useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ALL_CONCEPTS, CONCEPTS, conceptsByCategory, searchConcepts } from '@/codex/concepts'
 import { CATEGORY_LABEL, CONCEPT_CATEGORIES, type ConceptCategory } from '@/codex/types'
 import { ConceptWidget } from '@/codex/widgets'
+import { CodexCanvas } from '@/codex/CodexCanvas'
+import { demoFor, starterFor } from '@/codex/demos'
+import { useTabs } from '@/store/tabStore'
 import { ALL_RESOURCES, PROVIDER_META } from '@/catalog/registry'
 import { ResourceIcon } from '@/ui/ResourceIcon'
 import { CodeBlock } from '@/ui/primitives'
@@ -57,6 +60,30 @@ export function CodexIndexPage() {
   )
 }
 
+function StarterButton({ defId }: { defId: string }) {
+  const navigate = useNavigate()
+  const open = useTabs((s) => s.open)
+  const def = ALL_RESOURCES.find((r) => r.id === defId)
+  if (!def) return null
+  const provider = PROVIDER_META[def.provider]
+
+  return (
+    <button
+      onClick={() => {
+        open(starterFor(defId))
+        navigate('/build')
+      }}
+      title={`Open a working architecture built around ${def.name}`}
+      className="focusable flex items-center gap-1.5 rounded-lg border border-line bg-surface/60 px-2 py-1 text-[11.5px] text-ink-dim transition hover:border-signal/45 hover:text-signal"
+    >
+      <span style={{ color: provider.color }}>
+        <ResourceIcon icon={def.icon} archetype={def.archetype} size={13} />
+      </span>
+      {def.short}
+    </button>
+  )
+}
+
 function ConceptCard({ id, title, short }: { id: string; title: string; short: string; category: ConceptCategory }) {
   return (
     <li>
@@ -74,6 +101,7 @@ function ConceptCard({ id, title, short }: { id: string; title: string; short: s
 export function ConceptPage() {
   const { id } = useParams<{ id: string }>()
   const concept = id ? CONCEPTS[id] : undefined
+  const demo = useMemo(() => (id ? demoFor(id) : null), [id])
 
   const taughtBy = useMemo(
     () => (id ? ALL_RESOURCES.filter((r) => r.concepts?.includes(id)) : []),
@@ -103,7 +131,16 @@ export function ConceptPage() {
         {concept.widget && <ConceptWidget id={concept.widget} />}
 
         <div className="space-y-4">
-          {paragraphs.map((p, i) => (
+          {paragraphs.slice(0, 2).map((p, i) => (
+            <p key={i} className="text-[14px] leading-[1.75] text-ink-dim">{p}</p>
+          ))}
+        </div>
+
+        {/* The runnable illustration sits early, where it can frame the rest. */}
+        {demo && <CodexCanvas demo={demo} conceptTitle={concept.title} />}
+
+        <div className="space-y-4">
+          {paragraphs.slice(2).map((p, i) => (
             <p key={i} className="text-[14px] leading-[1.75] text-ink-dim">{p}</p>
           ))}
         </div>
@@ -134,23 +171,15 @@ export function ConceptPage() {
             <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-faint">
               Play with this on the canvas
             </h3>
+            <p className="mt-1 text-[12px] leading-relaxed text-ink-faint">
+              Each one opens a small working architecture built around that resource, in its own tab.
+            </p>
             <ul className="mt-3 flex flex-wrap gap-1.5">
-              {taughtBy.slice(0, 12).map((def) => {
-                const provider = PROVIDER_META[def.provider]
-                return (
-                  <li key={def.id}>
-                    <Link
-                      to="/build"
-                      className="focusable flex items-center gap-1.5 rounded-lg border border-line bg-surface/60 px-2 py-1 text-[11.5px] text-ink-dim transition hover:border-line-bright hover:text-ink"
-                    >
-                      <span style={{ color: provider.color }}>
-                        <ResourceIcon icon={def.icon} archetype={def.archetype} size={13} />
-                      </span>
-                      {def.short}
-                    </Link>
-                  </li>
-                )
-              })}
+              {taughtBy.slice(0, 12).map((def) => (
+                <li key={def.id}>
+                  <StarterButton defId={def.id} />
+                </li>
+              ))}
             </ul>
           </section>
         )}

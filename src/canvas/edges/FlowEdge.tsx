@@ -2,8 +2,8 @@ import { memo, useState } from 'react'
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, useInternalNode, type EdgeProps } from '@xyflow/react'
 import { FLOW_META } from '@/catalog/schema/flows'
 import { getResource } from '@/catalog/registry'
-import { useGame } from '@/store/gameStore'
 import type { CwEdge } from '@/store/types'
+import { useEdgeSimState, useSimSpeed } from '../simView'
 
 /** How many packets to animate at a given intensity. More traffic, more dots. */
 function packetCount(intensity: number) {
@@ -23,8 +23,8 @@ export const FlowEdge = memo(function FlowEdge({
   sourcePosition, targetPosition, data, selected,
 }: EdgeProps<CwEdge>) {
   const [hovered, setHovered] = useState(false)
-  const state = useGame((s) => s.sim?.edges[id])
-  const speed = useGame((s) => s.speed)
+  const state = useEdgeSimState(id)
+  const speed = useSimSpeed()
   const sourceNode = useInternalNode(source)
   const targetNode = useInternalNode(target)
 
