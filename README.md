@@ -203,18 +203,22 @@ box, which makes it large (~1.8GB). Everything else works without them.
 ### Deploying
 
 Static files — Cloudflare Pages, Netlify, GitHub Pages, any bucket. This one runs on
-Cloudflare Pages:
-
-```bash
-npm run deploy     # builds and uploads to cloudwright.pages.dev
-```
-
-Or connect the repository in the Cloudflare dashboard for a deploy on every push:
+Cloudflare Pages, **Git-connected**: every push to `main` builds and deploys
+automatically at cloudwright.pages.dev, and every other branch gets its own preview URL.
+That is configured in the Cloudflare dashboard rather than as a GitHub Action — Cloudflare
+Pages' own build service watches the repository directly, which needs no API token stored
+as a repository secret and gives preview deployments for free.
 
 | Setting | Value |
 | --- | --- |
 | Build command | `npm run build` |
 | Output directory | `dist` |
+
+For a manual deploy — from a branch, or a local change without pushing:
+
+```bash
+npm run deploy     # builds and uploads to cloudwright.pages.dev via wrangler
+```
 
 `public/_redirects` gives the SPA its client-side routing fallback and `public/_headers`
 sets security headers and immutable asset caching. Both are copied into `dist/`.
