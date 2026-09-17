@@ -36,6 +36,15 @@ export interface MissionState {
   hintsShown: number
   /** Set when every objective has been satisfied at least once. */
   finished: boolean
+  /**
+   * Whether the player has dismissed the "mission complete" debrief for the
+   * current completion. Kept separate from `finished` on purpose: the sim
+   * keeps ticking in the background, `evaluate` keeps re-confirming the
+   * objectives are satisfied, and if dismissal just flipped `finished` back
+   * to false the very next tick would flip it true again — the popup would
+   * unmount and immediately remount mid-close.
+   */
+  debriefDismissed: boolean
 
   start: (missionId: string) => void
   abandon: () => void
@@ -51,6 +60,7 @@ export const useMission = create<MissionState>((set, get) => ({
   completed: loadProgress().completed,
   hintsShown: 0,
   finished: false,
+  debriefDismissed: false,
 
   start: (missionId) => {
     const mission = MISSION_BY_ID[missionId]
@@ -61,7 +71,7 @@ export const useMission = create<MissionState>((set, get) => ({
     else game.clear()
 
     game.setName(mission.title)
-    set({ activeId: missionId, done: [], hintsShown: 0, finished: false })
+    set({ activeId: missionId, done: [], hintsShown: 0, finished: false, debriefDismissed: false })
 
     for (const seed of mission.startIncidents ?? []) {
       game.triggerIncident(seed.nodeId, seed.modeId)
@@ -69,7 +79,7 @@ export const useMission = create<MissionState>((set, get) => ({
     get().evaluate()
   },
 
-  abandon: () => set({ activeId: null, done: [], hintsShown: 0, finished: false }),
+  abandon: () => set({ activeId: null, done: [], hintsShown: 0, finished: false, debriefDismissed: false }),
 
   evaluate: () => {
     const { activeId, done, completed, finished } = get()
@@ -102,7 +112,7 @@ export const useMission = create<MissionState>((set, get) => ({
   },
 
   revealHint: () => set((s) => ({ hintsShown: s.hintsShown + 1 })),
-  dismissDebrief: () => set({ finished: false }),
+  dismissDebrief: () => set({ debriefDismissed: true }),
 
   isUnlocked: (mission) => {
     if (!mission.requires) return true

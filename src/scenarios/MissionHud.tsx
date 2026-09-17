@@ -10,6 +10,7 @@ export function MissionHud() {
   const activeId = useMission((s) => s.activeId)
   const done = useMission((s) => s.done)
   const finished = useMission((s) => s.finished)
+  const debriefDismissed = useMission((s) => s.debriefDismissed)
   const hintsShown = useMission((s) => s.hintsShown)
   const revealHint = useMission((s) => s.revealHint)
   const abandon = useMission((s) => s.abandon)
@@ -23,7 +24,7 @@ export function MissionHud() {
 
   const progress = done.length / mission.objectives.length
 
-  if (finished) {
+  if (finished && !debriefDismissed) {
     return (
       <div className="absolute inset-0 z-50 grid place-items-center bg-void/75 p-6 backdrop-blur-sm">
         <div
