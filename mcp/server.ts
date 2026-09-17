@@ -515,7 +515,7 @@ export function createCloudwrightServer(options: ServerOptions = {}) {
       {
         title: 'Screenshot a diagram',
         description:
-          'Renders a diagram in the real application and returns a PNG, plus the simulation state at that moment. Use it to check your own work, or to illustrate an answer.',
+          'Renders a diagram in the real application and returns a PNG, plus the simulation state at that moment. Use it to check your own work, or to illustrate an answer. `title` and `subtitle` draw a caption over the canvas in the application\'s own type, so the image carries its point wherever it travels.',
         inputSchema: {
           diagram: diagramInput,
           ticks: z.number().optional().describe('Advance the simulation this many ticks before capturing.'),
@@ -524,13 +524,15 @@ export function createCloudwrightServer(options: ServerOptions = {}) {
           height: z.number().optional(),
           loadMultiplier: z.number().optional(),
           theme: z.enum(['light', 'dark']).optional().describe('Colour scheme to render in. Default dark.'),
+          title: z.string().optional().describe('Headline drawn over the canvas — state the claim, not the diagram\'s name.'),
+          subtitle: z.string().optional().describe('One line under the title, usually the numbers that prove the claim.'),
         },
       },
-      async ({ diagram, ticks, incidents, width, height, loadMultiplier, theme }) => {
+      async ({ diagram, ticks, incidents, width, height, loadMultiplier, theme, title, subtitle }) => {
         const { diagram: doc } = coerceDiagram(diagram)
         const appUrl = await resolveAppUrl(options.appUrl, DIST)
         const { base64, snapshot } = await renderScreenshot(appUrl, {
-          diagram: doc, ticks, incidents, width, height, loadMultiplier, theme,
+          diagram: doc, ticks, incidents, width, height, loadMultiplier, theme, title, subtitle,
         })
         return {
           content: [
@@ -546,7 +548,7 @@ export function createCloudwrightServer(options: ServerOptions = {}) {
       {
         title: 'Record a run as video',
         description:
-          'Plays a diagram forward and encodes the result as an MP4 — traffic flowing, failures appearing, recovery happening. Use `timeline` to inject a failure part-way through so the video tells a story.',
+          'Plays a diagram forward and encodes the result as an MP4 — traffic flowing, failures appearing, recovery happening. Use `timeline` to inject a failure part-way through so the video tells a story, and `title`/`subtitle` to caption it.',
         inputSchema: {
           diagram: diagramInput,
           frames: z.number().optional().describe('Simulation ticks to record. Default 60.'),
@@ -555,17 +557,18 @@ export function createCloudwrightServer(options: ServerOptions = {}) {
           timeline: z.array(incidentSchema.extend({ atFrame: z.number() })).optional(),
           width: z.number().optional(),
           height: z.number().optional(),
+          scale: z.number().optional().describe('Device pixel ratio for the recording. Defaults to 2 for retina-sized frames.'),
           loadMultiplier: z.number().optional(),
           theme: z.enum(['light', 'dark']).optional().describe('Colour scheme to render in. Default dark.'),
+          title: z.string().optional().describe('Headline drawn over the canvas — state the claim, not the diagram\'s name.'),
+          subtitle: z.string().optional().describe('One line under the title, usually the numbers that prove the claim.'),
         },
       },
-      async ({ diagram, frames, fps, outputPath, timeline, width, height, loadMultiplier, theme }) => {
+      async ({ diagram, frames, fps, outputPath, timeline, width, height, scale, loadMultiplier, theme, title, subtitle }) => {
         const { diagram: doc } = coerceDiagram(diagram)
         const appUrl = await resolveAppUrl(options.appUrl, DIST)
         const result = await renderVideo(appUrl, {
-          diagram: doc, frames, fps, outputPath, timeline, width, height, loadMultiplier, theme,
-          // Scale 1 keeps the file small; videos are for watching, not pixel-peeping.
-          scale: 1,
+          diagram: doc, frames, fps, outputPath, timeline, width, height, scale, loadMultiplier, theme, title, subtitle,
         })
         return text({
           ...result,

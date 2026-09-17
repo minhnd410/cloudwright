@@ -93,6 +93,10 @@ export interface RenderOptions {
   attacksEnabled?: boolean
   /** Defaults to dark, which is what the app looks like out of the box. */
   theme?: 'light' | 'dark'
+  /** Headline drawn over the canvas — the claim the render is making. */
+  title?: string
+  /** One line under the title, usually the numbers that prove it. */
+  subtitle?: string
 }
 
 interface Session {
@@ -139,8 +143,49 @@ async function openSession(appUrl: string, options: RenderOptions): Promise<Sess
   // Hiding the panels changes the canvas size, so re-frame before capturing.
   await new Promise((r) => setTimeout(r, 250))
   await refit(page)
+  await applyCaption(page, options.title, options.subtitle)
 
   return { browser, page }
+}
+
+/**
+ * Draws a caption over the canvas in the application's own type, so a render
+ * that travels on its own — into a slide, a post, a chat — still says what it
+ * is. Fixed position and pointer-events: none, so it never disturbs the layout
+ * React Flow is measuring against.
+ */
+async function applyCaption(page: Page, title?: string, subtitle?: string) {
+  if (!title && !subtitle) return
+  await page.evaluate((caption) => {
+    document.getElementById('cw-caption')?.remove()
+    const wrap = document.createElement('div')
+    wrap.id = 'cw-caption'
+    wrap.style.cssText = [
+      'position:fixed', 'inset:0 0 auto 0', 'z-index:2147483647', 'pointer-events:none',
+      'padding:34px 44px 44px', 'font-family:var(--font-sans)',
+      'background:linear-gradient(180deg, var(--color-void) 30%, transparent 100%)',
+    ].join(';')
+
+    if (caption.title) {
+      const h = document.createElement('div')
+      h.textContent = caption.title
+      h.style.cssText = [
+        'font-size:32px', 'line-height:1.15', 'font-weight:640',
+        'letter-spacing:-0.015em', 'color:var(--color-ink)',
+      ].join(';')
+      wrap.appendChild(h)
+    }
+    if (caption.subtitle) {
+      const p = document.createElement('div')
+      p.textContent = caption.subtitle
+      p.style.cssText = [
+        'margin-top:10px', 'font-size:18px', 'line-height:1.35',
+        'color:var(--color-ink-dim)',
+      ].join(';')
+      wrap.appendChild(p)
+    }
+    document.body.appendChild(wrap)
+  }, { title: title ?? '', subtitle: subtitle ?? '' })
 }
 
 async function stepAndSettle(page: Page, ticks: number) {
@@ -171,6 +216,7 @@ export async function renderScreenshot(appUrl: string, options: RenderOptions): 
   try {
     await stepAndSettle(page, options.ticks ?? 0)
     await refit(page)
+    await applyCaption(page, options.title, options.subtitle)
     const buffer = await page.screenshot({ type: 'png' })
     const snapshot = await page.evaluate(() =>
       (window as unknown as { __cloudwright: { snapshot: () => unknown } }).__cloudwright.snapshot(),
