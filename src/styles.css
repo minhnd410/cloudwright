@@ -191,11 +191,32 @@
   width: 9px; height: 9px;
   background: var(--color-deep);
   border: 1.5px solid var(--color-line-bright);
-  transition: all 0.14s ease;
+  transition: background-color 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
 }
+/*
+ * The dot stays small so it does not crowd the node, so the area that accepts
+ * the pointer is grown separately. Without this a 9px target has to be hit
+ * almost exactly, and on a zoomed-out canvas it is smaller still.
+ */
+.react-flow__handle::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+}
+/*
+ * Grow the hover state with a ring, never a transform: React Flow places each
+ * handle with a side-specific `translate`, so a `transform` here replaces that
+ * offset and slides the handle off its port — in a different direction on each
+ * side — which then drops the hover and flickers.
+ */
 .react-flow__handle:hover,
-.react-flow__handle.connectionindicator:hover { background: var(--color-signal); border-color: var(--color-signal); transform: scale(1.35); }
-.react-flow__handle.connecting { background: var(--color-signal); border-color: var(--color-signal); }
+.react-flow__handle.connectionindicator:hover,
+.react-flow__handle.connecting {
+  background: var(--color-signal);
+  border-color: var(--color-signal);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-signal) 24%, transparent);
+}
 .react-flow__node { font-family: var(--font-sans); }
 .react-flow__node.selected > * { outline: none; }
 .react-flow__edge.selected .cw-edge-base { stroke: var(--color-ink); }

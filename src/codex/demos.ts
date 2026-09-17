@@ -116,9 +116,56 @@ const k8sScene = (name: string, workload: Record<string, string | number | boole
   return diagram(name, nodes, edges)
 }
 
+/**
+ * One shared stack against several independent ones. The fault is identical in
+ * both variants; what changes is how much of the platform it reaches.
+ */
+const cellScene = (name: string, cells: number) => (): SavedDiagram => {
+  const nodes: Parameters<typeof diagram>[1] = [
+    { id: 'users', def: 'core.client', at: [-420, 220], props: { rps: 1200, region: 'global' } },
+    { id: 'net', def: 'core.internet', at: [-210, 220] },
+    { id: 'edge', def: 'aws.cloudfront', at: [10, 220] },
+  ]
+  const edges: Parameters<typeof diagram>[2] = [
+    ['users', 'out', 'net', 'in'],
+    ['net', 'out', 'edge', 'in'],
+  ]
+  for (let i = 0; i < cells; i++) {
+    const y = 40 + i * 220
+    const lb = `alb${i}`, app = `app${i}`, db = `db${i}`
+    nodes.push(
+      { id: lb, def: 'aws.alb', at: [260, y], label: cells > 1 ? `Cell ${i + 1} · ALB` : 'ALB' },
+      { id: app, def: 'aws.ec2', at: [520, y], props: { size: 'm5.xlarge', replicas: Math.ceil(12 / cells) }, label: cells > 1 ? `Cell ${i + 1} · App` : 'App' },
+      { id: db, def: 'aws.rds', at: [790, y], props: { multiAz: true, backupRetention: 7, size: 'db.m5.xlarge' }, label: cells > 1 ? `Cell ${i + 1} · Database` : 'Database' },
+    )
+    edges.push(['edge', 'origin', lb, 'in'], [lb, 'out', app, 'in'], [app, 'out', db, 'in'])
+  }
+  return diagram(name, nodes, edges)
+}
+
 // ── Explicit demos ──────────────────────────────────────────────────────────
 
 const DEMOS: Record<string, Demo> = {
+  'cell-based-architecture': {
+    caption: 'The same database fault, once against a shared stack and once against three cells. Watch how much of the platform it takes with it.',
+    autoplay: true,
+    variants: [
+      {
+        id: 'shared',
+        label: 'One shared stack',
+        note: 'Every customer is served by the same database, so its lock contention is everyone\'s.',
+        build: cellScene('One shared stack', 1),
+        incidents: [{ nodeId: 'db0', modeId: 'long-lock' }],
+      },
+      {
+        id: 'cells',
+        label: 'Three cells',
+        note: 'Each cell has its own database and shares nothing behind the router. The fault is contained to a third of the customers.',
+        build: cellScene('Three cells', 3),
+        incidents: [{ nodeId: 'db0', modeId: 'long-lock' }],
+      },
+    ],
+  },
   caching: {
     caption: 'Watch the database demand figure. The cache absorbs most reads before they ever arrive.',
     autoplay: true,
@@ -283,6 +330,7 @@ const TEMPLATE_FOR_CATEGORY: Record<string, string> = {
   reliability: 'three-tier',
   security: 'three-tier',
   operations: 'three-tier',
+  platform: 'kubernetes',
   kubernetes: 'kubernetes',
 }
 

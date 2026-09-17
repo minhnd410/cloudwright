@@ -31,7 +31,7 @@ Cloudwright is the second one. It is a free-form canvas, like a diagram tool, ex
 diagram is *alive*: connections that make no sense in reality refuse to form, traffic
 actually flows through what you build, and the numbers respond to the decisions you make.
 
-**75 services** across AWS, Azure, GCP and Kubernetes · **105 codex entries** · **10 missions** · **88 tests**
+**75 services** across AWS, Azure, GCP and Kubernetes · **162 codex entries** · **15 missions** · **93 tests**
 
 ---
 
@@ -110,8 +110,9 @@ equivalents sit side by side. Learn the shape once; it transfers.
 
 <img src="docs/media/codex.png" alt="A codex entry with a runnable comparison embedded in the article" width="100%">
 
-105 entries covering networking, compute, data, reliability, security, operations and
-Kubernetes. Several carry interactive explainers — an OSI layer browser, a CIDR
+162 entries covering networking, compute, data, reliability, security, operations,
+platform engineering and Kubernetes — the ground a cloud engineer, a platform engineer, a
+DevOps engineer and an SRE each stand on. Several carry interactive explainers — an OSI layer browser, a CIDR
 calculator, a TLS handshake walkthrough, an availability-maths calculator, an error
 budget burn-rate tool.
 
@@ -123,9 +124,10 @@ and without the thing the entry is about. Caching is not something you are told 
 
 <img src="docs/media/missions.png" alt="The missions page, grouped by track" width="100%">
 
-Ten scenarios built around problems people have actually been paged for — an exposed
+Fifteen scenarios built around problems people have actually been paged for — an exposed
 database, a Black Friday spike, a CrashLoopBackOff, a ransomware event, a bill nobody can
-explain. Each has objectives evaluated live against your architecture, progressive hints,
+explain, a pager that fires all night and stays silent through the real outage, a golden
+path forty teams will copy. Each has objectives evaluated live against your architecture, progressive hints,
 and a debrief that states the lesson plainly.
 
 Every mission is **proven winnable by a test**, because an objective that quietly becomes
@@ -180,7 +182,7 @@ really being asked.
 ```bash
 npm install
 npm run dev        # http://localhost:5173
-npm run check      # typecheck + lint + 88 tests
+npm run check      # typecheck + lint + 93 tests
 npm run build      # dist/ (app) and dist-mcp/ (MCP server)
 ```
 

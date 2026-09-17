@@ -1,5 +1,26 @@
+import { getResource } from '@/catalog/registry'
+import type { Archetype } from '@/catalog/schema/types'
 import { diagram } from './builder'
-import type { Mission } from './types'
+import type { Mission, MissionContext } from './types'
+
+const archetypeOf = (defId: string): Archetype | undefined => getResource(defId)?.archetype
+
+/**
+ * Telemetry, image and deploy edges do not carry traffic, so `reaches` — which
+ * follows the request path — cannot see them. These walk the edges directly.
+ */
+function linked(c: MissionContext, from: Archetype, to: Archetype[]): boolean {
+  const targets = new Set(
+    c.graph.nodes.filter((n) => to.includes(archetypeOf(n.defId) as Archetype)).map((n) => n.id),
+  )
+  if (targets.size === 0) return false
+  return c.graph.nodes
+    .filter((n) => archetypeOf(n.defId) === from)
+    .some((n) => c.graph.edges.some((e) => e.source === n.id && targets.has(e.target)))
+}
+
+const sendsTelemetry = (c: MissionContext, from: Archetype) =>
+  linked(c, from, ['monitoring', 'logging', 'tracing', 'alerting'])
 
 const firstContact: Mission = {
   id: 'first-contact',
@@ -824,9 +845,479 @@ const blastRadius: Mission = {
   concepts: ['blast-radius', 'zero-trust', 'lateral-movement', 'data-exfiltration', 'least-privilege', 'network-segmentation'],
 }
 
+const thePager: Mission = {
+  id: 'the-pager',
+  title: 'The Pager',
+  tagline: 'It fires eleven times a night and stayed silent through the real outage.',
+  difficulty: 'medium',
+  track: 'operations',
+  requires: 'single-point',
+  minutes: 12,
+  brief: [
+    'The on-call rota is in revolt. The pager fires on CPU, on memory, on disk, on anything that moves — and last Thursday, when the application spent forty minutes returning errors to every customer, it said nothing at all.',
+    'Nobody noticed until a customer emailed. That is the failure you are fixing: not a missing alarm, but an alerting strategy that pages on causes instead of on what users feel, and a telemetry pipeline with holes in it.',
+    'Press play. Something is already wrong with the application tier — find it in the numbers, not by guessing.',
+  ],
+  start: diagram('The Pager', [
+    { id: 'users', def: 'core.client', at: [-400, 140], props: { rps: 700 } },
+    { id: 'net', def: 'core.internet', at: [-190, 140] },
+    { id: 'alb', def: 'aws.alb', at: [40, 140], props: { accessLogs: false, healthPath: '/' } },
+    { id: 'app', def: 'aws.ec2', at: [300, 140], props: { replicas: 2, size: 'm5.large', autoscale: false } },
+    { id: 'db', def: 'aws.rds', at: [560, 140], props: { multiAz: true, backupRetention: 7, size: 'db.m5.large' } },
+    { id: 'cw', def: 'aws.cloudwatch', at: [300, 380], props: { alarmStrategy: 'everything', logRetention: 1 } },
+  ], [
+    ['users', 'out', 'net', 'in'],
+    ['net', 'out', 'alb', 'in'],
+    ['alb', 'out', 'app', 'in'],
+    ['app', 'out', 'db', 'in'],
+    ['app', 'telemetry', 'cw', 'in'],
+  ]),
+  startIncidents: [{ nodeId: 'app', modeId: 'disk-full' }],
+  objectives: [
+    {
+      id: 'symptom',
+      label: 'Alarm on symptoms rather than on everything',
+      check: (c) => c.prop('monitoring', 'alarmStrategy', 'symptom'),
+      hint: 'Select CloudWatch and change the alarm strategy. A pager that fires on every metric is a pager people mute.',
+    },
+    {
+      id: 'retention',
+      label: 'Keep logs long enough to investigate with',
+      check: (c) => c.every('monitoring', (p) => Number(p.logRetention ?? 0) >= 30),
+      hint: 'One day of retention means an incident reviewed on Monday has no evidence left. Thirty days is a reasonable floor.',
+    },
+    {
+      id: 'db-telemetry',
+      label: 'Collect telemetry from the database and the load balancer too',
+      check: (c) => sendsTelemetry(c, 'relational-db') && sendsTelemetry(c, 'load-balancer-l7'),
+      hint: 'Drag from the telemetry handle on the bottom of each node to CloudWatch. You cannot correlate a slow request with a saturated database if only one of them is reporting.',
+    },
+    {
+      id: 'access-logs',
+      label: 'Turn on load balancer access logs',
+      check: (c) => c.prop('load-balancer-l7', 'accessLogs', true),
+      hint: 'Access logs are the per-request record — status codes, target, response time. Without them you cannot answer "which requests failed".',
+    },
+    {
+      id: 'deep-health',
+      label: 'Health-check something that means the application works',
+      check: (c) => c.every('load-balancer-l7', (p) => String(p.healthPath ?? '/') !== '/'),
+      hint: 'A check against "/" passes whenever the web server is alive, including when every dependency behind it is broken. Point it at a path that exercises the application.',
+    },
+    {
+      id: 'serving',
+      label: 'Deal with the failing instance and get the error rate under 2%',
+      sustained: true,
+      check: (c) => c.ranFor(25) && c.metric('totalServed') > 0 && c.metric('errorRate') < 0.02,
+      hint: 'Open the incident in the Observability panel and read the remedy. The root volume filled because the logs never left the box — ship them off it, then mark the incident resolved.',
+    },
+  ],
+  hints: [
+    'Work out what users actually experience first. The error rate and p95 in the toolbar are the symptoms; every other metric is a cause you might or might not care about.',
+    'The degraded instance still answers its shallow health check against "/". That is exactly why the load balancer keeps sending it traffic.',
+    'Two instances with one degraded is one instance of real capacity. Redundancy has to survive losing a member, not just exist.',
+  ],
+  debrief: [
+    'Alerting on causes produces noise; alerting on symptoms produces pages that mean something. Everything else — CPU, memory, queue depth — belongs on a dashboard you look at once the page has told you where to look.',
+    'Telemetry with holes in it is worse than none, because it gives you confidence you have not earned. The database was the obvious suspect for forty minutes and nobody could confirm it either way.',
+    'And a health check is a contract about what "healthy" means. If it only proves the process is running, the load balancer will keep routing to a process that cannot do its job.',
+  ],
+  concepts: ['observability', 'golden-signals', 'alerting', 'health-checks', 'log-management'],
+}
+
+const shipIt: Mission = {
+  id: 'ship-it',
+  title: 'Ship It',
+  tagline: 'The last deploy was a forty-minute outage. The one before that was fine, probably.',
+  difficulty: 'medium',
+  track: 'operations',
+  requires: 'first-contact',
+  minutes: 12,
+  brief: [
+    'Releases go out every second Thursday, all at once, from a pipeline nobody has changed in two years. The last one replaced every instance simultaneously with a build that could not reach the database, and the rollback was a second deploy that took thirty-five minutes to prepare.',
+    'You are not being asked to deploy less often. You are being asked to make deploying boring: small exposure, an automatic way back, and a signal that tells you which of those two you need.',
+    'The pipeline is on the canvas. So is the tier it deploys to.',
+  ],
+  start: diagram('Ship It', [
+    { id: 'users', def: 'core.client', at: [-400, 140], props: { rps: 500 } },
+    { id: 'net', def: 'core.internet', at: [-190, 140] },
+    { id: 'alb', def: 'aws.alb', at: [40, 140], props: { deregistrationDelay: 0 } },
+    { id: 'app', def: 'aws.ec2', at: [300, 140], props: { replicas: 3, size: 'm5.large' } },
+    { id: 'db', def: 'aws.rds', at: [560, 140], props: { multiAz: true, backupRetention: 7 } },
+    { id: 'pipe', def: 'aws.pipeline', at: [300, -120], props: { strategy: 'all-at-once', autoRollback: false, gates: [] } },
+  ], [
+    ['users', 'out', 'net', 'in'],
+    ['net', 'out', 'alb', 'in'],
+    ['alb', 'out', 'app', 'in'],
+    ['app', 'out', 'db', 'in'],
+    ['pipe', 'deploy', 'app', 'deploy'],
+  ]),
+  objectives: [
+    {
+      id: 'progressive',
+      label: 'Expose a release to a fraction of traffic before all of it',
+      check: (c) => c.some('ci-cd', (p) => p.strategy === 'canary' || p.strategy === 'blue-green'),
+      hint: 'Canary sends a small percentage first and watches. Blue/green keeps the old version alive so the way back is a traffic switch rather than another deploy.',
+    },
+    {
+      id: 'rollback',
+      label: 'Roll back automatically when the release misbehaves',
+      check: (c) => c.every('ci-cd', (p) => p.autoRollback === true),
+      hint: 'A rollback that waits for a human to notice is measured in the same minutes as the outage.',
+    },
+    {
+      id: 'gates',
+      label: 'Verify the build before and after it reaches production',
+      check: (c) => c.some('ci-cd', (p) => {
+        const gates = Array.isArray(p.gates) ? p.gates.map(String) : []
+        return gates.includes('tests') && gates.includes('scan') && gates.includes('smoke')
+      }),
+      hint: 'Tests and a vulnerability scan before, a smoke test after. The post-deploy check is what turns automatic rollback from a hope into a mechanism.',
+    },
+    {
+      id: 'registry',
+      label: 'Build one artefact, store it immutably, and deploy that',
+      check: (c) => c.has('registry')
+        && c.every('registry', (p) => p.immutableTags === true && p.scanOnPush === true)
+        && linked(c, 'registry', ['vm', 'container-service', 'k8s-workload']),
+      hint: 'Add a container registry, turn on immutable tags and scanning, and connect it to the compute tier. A mutable tag means you cannot prove what is running, and a rollback may not roll back.',
+    },
+    {
+      id: 'draining',
+      label: 'Stop killing requests that are already in flight',
+      check: (c) => c.every('load-balancer-l7', (p) => Number(p.deregistrationDelay ?? 0) >= 30),
+      hint: 'A deregistration delay of zero drops every in-flight request the moment an instance leaves the pool. It needs to be longer than your slowest request.',
+    },
+    {
+      id: 'signal',
+      label: 'Give the rollback something to trigger on',
+      check: (c) => c.has('monitoring') && sendsTelemetry(c, 'vm'),
+      hint: 'Automatic rollback needs a metric to watch. Add a monitoring service and connect the application tier to it.',
+    },
+    {
+      id: 'serving',
+      label: 'Keep serving while you change all of this',
+      check: (c) => c.ranFor(20) && c.metric('totalServed') > 0 && c.metric('errorRate') < 0.02,
+      hint: 'Press play and let it run. None of these changes should cost you availability.',
+    },
+  ],
+  hints: [
+    'The gates are a multi-select on the pipeline. Choose the ones that would have caught the release that broke, not every box available.',
+    'Immutable tags and a digest-based deploy are what make "roll back to the previous version" a precise instruction rather than an approximate one.',
+    'Connection draining is the unglamorous setting that decides whether a deploy is invisible or produces a burst of 502s.',
+  ],
+  debrief: [
+    'Deployment frequency and change failure rate move together in the right direction. Small changes, deployed often, through a path that is exercised constantly, fail less than large ones deployed rarely.',
+    'The measure that matters is how fast you can get back to a working state. Automatic rollback on a post-deploy signal beats any number of approval gates, because a gate that is always granted is a delay rather than a control.',
+    'And build once, promote the same artefact. If production runs something that was rebuilt after staging tested it, then staging tested a different piece of software.',
+  ],
+  concepts: ['ci-cd', 'deployment-strategies', 'release-versioning', 'dora-metrics', 'feature-flags'],
+}
+
+const pavedRoad: Mission = {
+  id: 'paved-road',
+  title: 'The Paved Road',
+  tagline: 'Twelve teams, twelve ways of running a service. Build the thirteenth and make it the easy one.',
+  difficulty: 'hard',
+  track: 'platform',
+  requires: 'crashloop',
+  minutes: 20,
+  brief: [
+    'You have joined a platform team of four, supporting around forty services. Every one of them was assembled by hand, and it shows: three of them have no resource limits, one keeps its database password in a ConfigMap, and nobody can say which services would survive losing a zone.',
+    'The plan is a golden path — one template that every new service starts from, with the decisions already made correctly. The first version is on the canvas, and it is what a service looks like when it was built by someone in a hurry.',
+    'Make it the thing you would be happy for forty teams to copy. Everything you fix here is a decision nobody has to make again.',
+  ],
+  start: diagram('The Paved Road', [
+    { id: 'users', def: 'core.client', at: [-400, 180], props: { rps: 600 } },
+    { id: 'net', def: 'core.internet', at: [-190, 180] },
+    { id: 'cluster', def: 'k8s.cluster', at: [40, -60], size: [880, 560], props: { rbac: 'cluster-admin', privateEndpoint: false } },
+    { id: 'ingress', def: 'k8s.ingress', at: [40, 220], in: 'cluster', props: { tls: false, controller: 'nginx' } },
+    { id: 'svc', def: 'k8s.service', at: [240, 220], in: 'cluster' },
+    { id: 'pool', def: 'k8s.nodepool', at: [440, 100], size: [380, 320], in: 'cluster', props: { nodeCount: 2, spreadZones: false, autoscale: false } },
+    {
+      id: 'web', def: 'k8s.deployment', at: [30, 60], in: 'pool',
+      props: {
+        replicas: 2, cpuRequest: 0, memRequest: 0, memLimit: 0,
+        livenessProbe: 'none', readinessProbe: false, pdb: false, antiAffinity: false, runAsNonRoot: false,
+      },
+    },
+    { id: 'cfg', def: 'k8s.config', at: [440, 460], in: 'cluster', props: { secretSource: 'k8s', encryptedAtRest: false } },
+    { id: 'db', def: 'aws.rds', at: [990, 220], props: { multiAz: true, backupRetention: 7 } },
+  ], [
+    ['users', 'out', 'net', 'in'],
+    ['net', 'out', 'ingress', 'in'],
+    ['ingress', 'out', 'svc', 'in'],
+    ['svc', 'out', 'web', 'in'],
+    ['web', 'out', 'db', 'in'],
+    ['cfg', 'out', 'web', 'config'],
+  ]),
+  objectives: [
+    {
+      id: 'probes',
+      label: 'Every workload declares what healthy means',
+      check: (c) => c.every('k8s-workload', (p) => p.livenessProbe !== 'none' && p.readinessProbe === true),
+      hint: 'Without a readiness probe, a Pod receives traffic the moment it starts — before it has connected to anything.',
+    },
+    {
+      id: 'resources',
+      label: 'Every workload declares what it needs and what it may not exceed',
+      check: (c) => c.every('k8s-workload', (p) => Number(p.cpuRequest ?? 0) > 0 && Number(p.memRequest ?? 0) > 0 && Number(p.memLimit ?? 0) > 0),
+      hint: 'A Pod with no requests is scheduled anywhere and evicted first. A Pod with no memory limit can take a node down with it.',
+    },
+    {
+      id: 'disruption',
+      label: 'Survive a node going away',
+      check: (c) => c.every('k8s-workload', (p) => p.pdb === true && p.antiAffinity === true),
+      hint: 'A disruption budget stops a drain taking every replica at once; anti-affinity stops them all being on the same node to begin with.',
+    },
+    {
+      id: 'spread',
+      label: 'Spread the nodes across zones and let the pool grow',
+      check: (c) => c.every('k8s-nodepool', (p) => p.spreadZones === true && p.autoscale === true),
+      hint: 'Replicas in one zone are not redundant against losing that zone, and a fixed pool means a busy Thursday is a Pending Pod.',
+    },
+    {
+      id: 'hpa',
+      label: 'Scale on demand rather than on a guess',
+      check: (c) => c.has('autoscaler') && c.some('autoscaler', (p) => Number(p.minReplicas ?? 0) >= 2),
+      hint: 'Add a Horizontal Pod Autoscaler with a floor of at least two. The floor is the availability decision; the ceiling is the budget one.',
+    },
+    {
+      id: 'secrets',
+      label: 'Take secrets from somewhere that can rotate and audit them',
+      check: (c) => c.every('k8s-config', (p) => p.secretSource === 'external' && p.encryptedAtRest === true),
+      hint: 'A Kubernetes Secret is base64, not encryption, unless encryption at rest is configured. An external secret manager gives you rotation and an access log as well.',
+    },
+    {
+      id: 'network',
+      label: 'Default to denying traffic inside the cluster',
+      check: (c) => c.some('firewall', (p) => p.defaultDeny === true && p.egressControl === true),
+      hint: 'Add a NetworkPolicy with default deny and egress control. Without one, every Pod can reach every other Pod and anything on the internet.',
+    },
+    {
+      id: 'supply-chain',
+      label: 'Run images you can identify and have scanned',
+      check: (c) => c.has('registry') && c.every('registry', (p) => p.immutableTags === true && p.scanOnPush === true),
+      hint: 'Add a registry with immutable tags and scan-on-push, and connect it to the workload. A mutable tag means two nodes can run two different builds of "the same" version.',
+    },
+    {
+      id: 'tls',
+      label: 'Terminate TLS at the edge of the cluster',
+      check: (c) => c.every('k8s-ingress', (p) => p.tls === true),
+      hint: 'The ingress has TLS turned off, which means the paved road ships plaintext by default.',
+    },
+    {
+      id: 'least-privilege',
+      label: 'Stop the template from handing out cluster-admin',
+      check: (c) => c.every('k8s-cluster', (p) => p.rbac === 'scoped') && c.every('k8s-workload', (p) => p.runAsNonRoot === true),
+      hint: 'Two settings: the cluster\'s RBAC posture, and whether the container runs as root. Both are defaults forty teams would inherit.',
+    },
+    {
+      id: 'clean',
+      label: 'Leave no critical or high finding in the review',
+      check: (c) => c.noFinding((f) => f.severity === 'critical' || f.severity === 'high'),
+      hint: 'The Review panel is the closest thing to the conversation a platform team has with itself. Clear it before this becomes the template.',
+    },
+  ],
+  hints: [
+    'Work top to bottom through the Review panel, then look at what a new team would have to decide for themselves. Every remaining decision is one you have not made for them.',
+    'The settings that matter most here are the ones with no visible effect on a good day: disruption budgets, zone spreading, the secret source, the network policy.',
+    'A paved road is only paved if it is easier than the alternative. Everything in this template should be something a team gets without asking.',
+  ],
+  debrief: [
+    'The value of a golden path is not the template. It is that forty teams stop making the same forty decisions, and that improving the path improves every service that took it.',
+    'Notice which settings you changed: almost all of them cost nothing and do nothing visible until a node is drained, a zone fails or a credential leaks. That is exactly the category of decision individual teams skip under delivery pressure — and exactly what a platform exists to supply.',
+    'Keep the escape hatch. A team with a genuine reason to leave the path should be able to, visibly, with an owner — otherwise they leave it invisibly.',
+  ],
+  concepts: ['golden-paths', 'platform-engineering', 'internal-developer-platform', 'self-service-guardrails', 'resource-requests-limits'],
+}
+
+const theDrill: Mission = {
+  id: 'the-drill',
+  title: 'The Drill',
+  tagline: 'The backups exist. Nobody has ever restored one.',
+  difficulty: 'hard',
+  track: 'reliability',
+  requires: 'three-nines',
+  minutes: 18,
+  brief: [
+    'A migration ran on Tuesday that dropped a column and rewrote four million rows incorrectly. It was noticed on Wednesday. The recovery took eleven hours, most of which was spent discovering what the recovery procedure actually was.',
+    'Your job is the recovery path, not the availability of the running system — those are different problems and this architecture has only solved the first one. High availability handles a component failing. It has no answer at all to "somebody destroyed the data on purpose or by accident".',
+    'Assume the attacker or the bad migration has your production credentials. Build what survives that.',
+  ],
+  start: diagram('The Drill', [
+    { id: 'users', def: 'core.client', at: [-400, 160], props: { rps: 600 } },
+    { id: 'net', def: 'core.internet', at: [-190, 160] },
+    { id: 'alb', def: 'aws.alb', at: [40, 160] },
+    { id: 'app', def: 'aws.ec2', at: [300, 160], props: { replicas: 3, size: 'm5.large' } },
+    { id: 'db', def: 'aws.rds', at: [560, 160], props: { multiAz: true, backupRetention: 1, deletionProtection: false, readReplicas: 0 } },
+    { id: 'docs', def: 'aws.s3', at: [560, 400], props: { versioning: false, lifecycle: false, publicAccess: false, encryption: 'provider' } },
+    { id: 'cw', def: 'aws.cloudwatch', at: [300, 400] },
+  ], [
+    ['users', 'out', 'net', 'in'],
+    ['net', 'out', 'alb', 'in'],
+    ['alb', 'out', 'app', 'in'],
+    ['app', 'out', 'db', 'in'],
+    ['app', 'out', 'docs', 'in'],
+    ['app', 'telemetry', 'cw', 'in'],
+  ]),
+  startIncidents: [{ nodeId: 'db', modeId: 'failover' }],
+  objectives: [
+    {
+      id: 'retention',
+      label: 'Hold backups longer than an attacker dwells',
+      check: (c) => c.every('relational-db', (p) => Number(p.backupRetention ?? 0) >= 14),
+      hint: 'One day of retention means anything discovered on Wednesday about Monday is unrecoverable. Ransomware in particular sits quietly for weeks before it triggers.',
+    },
+    {
+      id: 'versioning',
+      label: 'Make object deletes and overwrites reversible',
+      check: (c) => c.every('object-store', (p) => p.versioning === true && p.lifecycle === true),
+      hint: 'Versioning keeps the previous object when something overwrites or deletes it. A lifecycle rule stops that becoming an unbounded bill.',
+    },
+    {
+      id: 'deletion-protection',
+      label: 'Stop the database being deleted by accident',
+      check: (c) => c.every('relational-db', (p) => p.deletionProtection === true),
+      hint: 'Deletion protection is the cheapest control in this mission. It is off.',
+    },
+    {
+      id: 'own-key',
+      label: 'Hold your own key, and hold it in more than one region',
+      check: (c) => c.has('kms') && c.every('kms', (p) => p.rotation === true && p.multiRegion === true) && c.every('object-store', (p) => p.encryption === 'cmk'),
+      hint: 'Add a KMS key, turn on rotation and make it multi-region, and point the bucket at it. A backup you cannot decrypt in the recovery region is not a backup.',
+    },
+    {
+      id: 'read-path',
+      label: 'Keep a replica so reads survive losing the primary',
+      check: (c) => c.every('relational-db', (p) => Number(p.readReplicas ?? 0) >= 1),
+      hint: 'A replica is not a backup — it replicates the bad migration faithfully. It is how the site stays readable while you restore.',
+    },
+    {
+      id: 'watch',
+      label: 'Notice the failover rather than hearing about it',
+      check: (c) => sendsTelemetry(c, 'relational-db') && c.prop('monitoring', 'alarmStrategy', 'symptom'),
+      hint: 'Connect the database telemetry to CloudWatch. The failover in progress right now is exactly the event you want to see in a graph.',
+    },
+    {
+      id: 'ride-it-out',
+      label: 'Keep the failover from taking the whole site down',
+      sustained: true,
+      check: (c) => c.ranFor(30) && c.metric('totalServed') > 0 && c.metric('errorRate') < 0.2,
+      hint: 'The primary is gone for a minute or two, so the writes that need it will fail. The question is what fraction of the site goes with them — a cache in front absorbs the reads that would otherwise all become errors.',
+    },
+  ],
+  hints: [
+    'Separate the two questions: what is my recovery point (how much data can I lose) and what is my recovery time (how long until I am serving again). Every control here answers one or the other.',
+    'A replica, a Multi-AZ standby and a backup are three different things. Only one of them survives a DELETE.',
+    'If the credentials that run production can also erase the backups, then the backups do not survive a compromise of production.',
+  ],
+  debrief: [
+    'High availability and disaster recovery solve different problems. Multi-AZ handles a building; it does nothing about a bad migration, a deleted account or an attacker with your credentials.',
+    'The strategies form a ladder — backup and restore, pilot light, warm standby, active-active — priced by how much downtime and data loss you can accept. Pick the rung from a stated objective, not from ambition.',
+    'And the plan is worth what its last rehearsal was worth. Restore from backup on a schedule, time it, and write the number down: that number is your real recovery time, and it is usually longer than anyone guessed.',
+  ],
+  concepts: ['disaster-recovery', 'rpo-rto', 'replication-lag', 'ransomware-resilience', 'key-management'],
+}
+
+const cellDivision: Mission = {
+  id: 'cell-division',
+  title: 'Cell Division',
+  tagline: 'One bad tenant, one poisoned queue, and everybody is down. Make it one eighth of everybody.',
+  difficulty: 'expert',
+  track: 'reliability',
+  requires: 'three-nines',
+  minutes: 22,
+  brief: [
+    'The platform serves every customer from one stack. It is well built — redundant, multi-zone, autoscaled — and none of that helped last month, when one customer\'s import job produced a query that saturated the shared database and every other customer watched their dashboards time out for ninety minutes.',
+    'Redundancy protects you from a component failing. It does nothing about a failure that applies to everything at once: a poison message, a bad configuration, one tenant consuming the shared thing.',
+    'Split the platform into independent cells, each serving a subset of customers, sharing nothing behind the router. Then break one on purpose and watch how much of the system stays up.',
+  ],
+  start: diagram('Cell Division', [
+    { id: 'users', def: 'core.client', at: [-420, 200], props: { rps: 1200, region: 'global' } },
+    { id: 'net', def: 'core.internet', at: [-210, 200] },
+    { id: 'alb', def: 'aws.alb', at: [20, 200] },
+    { id: 'app', def: 'aws.ec2', at: [290, 200], props: { replicas: 6, size: 'm5.xlarge', autoscale: true, maxReplicas: 12 } },
+    { id: 'db', def: 'aws.rds', at: [570, 200], props: { multiAz: true, backupRetention: 7, size: 'db.m5.xlarge' } },
+    { id: 'cw', def: 'aws.cloudwatch', at: [290, 430] },
+  ], [
+    ['users', 'out', 'net', 'in'],
+    ['net', 'out', 'alb', 'in'],
+    ['alb', 'out', 'app', 'in'],
+    ['app', 'out', 'db', 'in'],
+    ['app', 'telemetry', 'cw', 'in'],
+  ]),
+  startIncidents: [{ nodeId: 'db', modeId: 'long-lock' }],
+  objectives: [
+    {
+      id: 'cells',
+      label: 'Run at least three independent application tiers',
+      check: (c) => c.count('vm') + c.count('container-service') >= 3,
+      hint: 'A cell is a complete copy of the stack, not another replica of the same one. Add two more compute tiers beside the first.',
+    },
+    {
+      id: 'data-per-cell',
+      label: 'Give every cell its own data store',
+      check: (c) => c.count('relational-db') >= 3,
+      hint: 'A shared database is the thing that failed. If every cell talks to it, you have three application tiers and one blast radius.',
+    },
+    {
+      id: 'no-sharing',
+      label: 'Share nothing between cells',
+      check: (c) => {
+        const compute = new Set(
+          c.graph.nodes.filter((n) => n.defId === 'aws.ec2' || n.defId === 'aws.ecs-fargate').map((n) => n.id),
+        )
+        const upstreamsOf = new Map<string, Set<string>>()
+        for (const e of c.graph.edges) {
+          if (!compute.has(e.source)) continue
+          const target = c.graph.nodes.find((n) => n.id === e.target)
+          if (target?.defId !== 'aws.rds' && target?.defId !== 'aws.aurora') continue
+          const set = upstreamsOf.get(e.target) ?? new Set<string>()
+          set.add(e.source)
+          upstreamsOf.set(e.target, set)
+        }
+        return upstreamsOf.size >= 3 && [...upstreamsOf.values()].every((s) => s.size === 1)
+      },
+      hint: 'Each database should have exactly one application tier connected to it. Two cells sharing a store are one cell wearing two hats.',
+    },
+    {
+      id: 'router',
+      label: 'Put a thin router in front that health-checks the cells',
+      check: (c) => c.has('cdn') || c.prop('dns-zone', 'healthChecks', true),
+      hint: 'Something has to map a customer to a cell and stop sending them to a broken one. A CDN or global entry point in front of all three cells is the version that carries requests; DNS with health checks is the cheaper one.',
+    },
+    {
+      id: 'observability',
+      label: 'Keep telemetry from every cell',
+      check: (c) => sendsTelemetry(c, 'vm') && sendsTelemetry(c, 'relational-db'),
+      hint: 'Per-cell metrics are the point. "The error rate is 12%" is useless if you cannot say which cell it is all coming from.',
+    },
+    {
+      id: 'contained',
+      label: 'Keep most of the platform serving while one cell is broken',
+      sustained: true,
+      check: (c) => c.ranFor(30) && c.metric('totalServed') > 0 && c.metric('errorRate') < 0.1,
+      hint: 'The lock contention only affects the cell whose database has it. If your error rate is far above a third, traffic is still reaching the broken cell — or the other cells have no capacity to take their share.',
+    },
+  ],
+  hints: [
+    'Build the second cell by copying the first: a load balancer or target group, a compute tier, and its own database. Then the third.',
+    'Size each cell for its share plus headroom. Cells that are exactly the right size for their own traffic have no room to absorb anything.',
+    'The router is now shared by everyone, which means it must be simpler than what it protects and must keep routing even when its own control plane is unavailable.',
+  ],
+  debrief: [
+    'Cells turn a total failure into a partial one. With three cells the worst case is roughly a third of customers; with eight it is an eighth. That is the entire argument, and it is the only control that works against failures which apply to everything at once.',
+    'The costs are real: fixed overhead per cell, no cross-cell joins, and anything that must be globally unique needs a home outside the cells — which becomes the shared component you were trying to avoid. Deployments must also go cell by cell, or one bad release still reaches everyone.',
+    'Shuffle sharding is the cheaper relative. Give each customer a random combination of workers rather than a fixed block, and a destructive tenant costs its neighbours one endpoint instead of their whole shard.',
+  ],
+  concepts: ['cell-based-architecture', 'shuffle-sharding', 'blast-radius', 'multi-tenancy', 'static-stability'],
+}
+
 export const MISSIONS: Mission[] = [
   firstContact, singlePoint, blackFriday, lockedOut, theFlood,
   crashLoop, ransomNote, theBill, threeNines, blastRadius,
+  thePager, shipIt, pavedRoad, theDrill, cellDivision,
 ]
 
 export const MISSION_BY_ID = Object.fromEntries(MISSIONS.map((m) => [m.id, m]))

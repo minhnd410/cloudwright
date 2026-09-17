@@ -5,10 +5,11 @@ import { data } from './topics/data'
 import { reliability } from './topics/reliability'
 import { security } from './topics/security'
 import { operations } from './topics/operations'
+import { platform } from './topics/platform'
 import { kubernetes } from './topics/kubernetes'
 
 export const ALL_CONCEPTS: Concept[] = [
-  ...networking, ...compute, ...data, ...reliability, ...security, ...operations, ...kubernetes,
+  ...networking, ...compute, ...data, ...reliability, ...security, ...operations, ...platform, ...kubernetes,
 ]
 
 export const CONCEPTS: Record<string, Concept> = Object.fromEntries(

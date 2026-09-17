@@ -3,13 +3,13 @@ import type { Concept } from '../types'
 export const networking: Concept[] = [
   {
     id: 'osi-model',
-    title: 'The OSI model, and the four layers you actually use',
+    title: 'The OSI model, and the three layers you actually use',
     category: 'networking',
     short: 'Seven layers exist on paper. In cloud work you touch three of them constantly.',
     widget: 'osi',
     body: `The OSI model splits networking into seven layers so that each one can change without the others caring. Ethernet at layer 2 can be replaced by Wi-Fi without TCP noticing; HTTP at layer 7 can become HTTP/3 without your router noticing. That independence is the whole point.
 
-In practice, cloud engineering happens at four of them. Layer 3 is IP: addresses, routes, subnets, and the reason a packet can find its way from your laptop to a machine in Virginia. Layer 4 is TCP and UDP: ports, connections, and the handshake that makes a stream reliable. Layer 7 is HTTP and its relatives: URLs, headers, status codes, and everything a person would recognise as "the request".
+In practice, cloud engineering happens at three of them. Layer 3 is IP: addresses, routes, subnets, and the reason a packet can find its way from your laptop to a machine in Virginia. Layer 4 is TCP and UDP: ports, connections, and the handshake that makes a stream reliable. Layer 7 is HTTP and its relatives: URLs, headers, status codes, and everything a person would recognise as "the request".
 
 Why it matters practically: it tells you what each piece of your infrastructure can possibly know. A network load balancer works at layer 4, so it sees an address and a port and nothing else — it cannot route by URL path because it never parses one. An application load balancer works at layer 7, so it can read the Host header and the path, but pays the cost of terminating and re-establishing connections. A security group filters by address and port, which is layer 3 and 4; a WAF inspects request bodies, which is layer 7. When someone asks "why can't the NLB do path-based routing?", the answer is always the layer.`,
     keyPoints: [
@@ -28,7 +28,7 @@ Why it matters practically: it tells you what each piece of your infrastructure 
     widget: 'cidr',
     body: `An IPv4 address is 32 bits. CIDR notation writes a range as an address plus how many of those bits are fixed: 10.0.0.0/16 means the first 16 bits are the network and the remaining 16 are free for hosts, giving 65,536 addresses. Each extra bit in the prefix halves the range, so a /17 is half a /16, and a /24 is 256 addresses.
 
-The arithmetic worth memorising: /24 is 256, /20 is 4,096, /16 is 65,536. Cloud providers reserve some addresses in every subnet — AWS takes five, Azure takes five, GCP takes four — so a /28 gives you eleven usable hosts, not sixteen. That catches everyone once.
+The arithmetic worth memorising: /24 is 256, /20 is 4,096, /16 is 65,536. Cloud providers reserve some addresses in every subnet — AWS takes five, Azure takes five, GCP takes four — so on AWS a /28, the smallest subnet it allows, gives you eleven usable hosts rather than sixteen. That catches everyone once.
 
 The decision that actually matters is the one you make first. A VPC's primary range is effectively permanent, and two networks with overlapping ranges can never be peered. Pick from RFC 1918 space deliberately: 10.0.0.0/8 gives you the most room, 172.16.0.0/12 is the middle option, and 192.168.0.0/16 is small enough that home routers already use it, which makes VPN conflicts likely. Leave generous gaps between environments, and size subnets for Kubernetes before you need Kubernetes — with the AWS VPC CNI every Pod consumes a real subnet address, and a /24 runs out at around 250 Pods.`,
     keyPoints: [
@@ -65,12 +65,12 @@ That is the entire distinction. Two subnets with identical CIDR sizes, identical
 
 The standard three-tier layout follows directly. Public subnets hold only the things that must be reachable — load balancers, NAT gateways, bastion hosts. Private subnets hold your application tier, which needs to pull packages and call APIs but should never accept an inbound connection from outside. Isolated subnets hold your databases, which need neither.
 
-Azure inverts one default worth knowing: outbound internet access exists unless you remove it, rather than existing only when you add a NAT gateway. That implicit access is being retired, so attach a NAT gateway explicitly rather than depending on it.`,
+Azure inverted one default worth knowing: outbound internet access used to exist unless you removed it, rather than existing only when you added a NAT gateway. Subnets in new virtual networks are now private by default, but existing virtual networks keep the old behaviour — so attach a NAT gateway explicitly rather than depending on which era a network was created in.`,
     keyPoints: [
       'Public = default route to an internet gateway. Private = default route to a NAT gateway. Isolated = no default route.',
       'An instance needs three things to be reachable: a public IP, a route to the gateway, and a permitting firewall rule.',
       'Databases belong in isolated subnets. They need no internet access in either direction.',
-      'NAT gateways live in public subnets; private subnets route to them.',
+      'A zonal NAT gateway lives in a public subnet and private subnets route to it; regional and Azure NAT gateways attach to subnets instead.',
     ],
     related: ['cidr-subnetting', 'nat-vs-igw', 'network-isolation', 'trust-boundary'],
   },
@@ -83,12 +83,12 @@ Azure inverts one default worth knowing: outbound internet access exists unless 
 
 A NAT gateway is a one-way door. Resources in a private subnet send traffic through it to reach the internet; the gateway rewrites the source address to its own, and replies come back through the same mapping. Nothing on the internet can initiate a connection inward, because there is no mapping until you create one by going out.
 
-The practical differences are cost and failure domain. An internet gateway is free; a NAT gateway costs roughly $33 a month plus a per-gigabyte processing charge, which adds up surprisingly fast when your deploys pull container images through it. And a NAT gateway lives in exactly one availability zone — if that zone fails, outbound internet stops for everything routing through it, even though your compute is spread across three zones. One NAT gateway per zone costs three times as much and removes that failure mode.
+The practical differences are cost and failure domain. An internet gateway is free; a NAT gateway costs roughly $33 a month plus a per-gigabyte processing charge, which adds up surprisingly fast when your deploys pull container images through it. And a NAT gateway in the default zonal mode lives in exactly one availability zone — if that zone fails, outbound internet stops for everything routing through it, even though your compute is spread across three zones. One NAT gateway per zone costs three times as much and removes that failure mode.
 
 The cost lever most people miss: VPC endpoints for S3 and DynamoDB are free gateway endpoints that keep that traffic off the NAT entirely.`,
     keyPoints: [
       'Internet gateway: bidirectional, free, one per VPC.',
-      'NAT gateway: outbound only, billed hourly and per GB, scoped to one availability zone.',
+      'NAT gateway: outbound only, billed hourly and per GB, and zone-scoped unless you use regional availability mode.',
       'A single NAT gateway is a zone-scoped single point of failure for your entire private tier.',
       'Gateway VPC endpoints for object storage are free and remove a large NAT bill.',
     ],
@@ -145,7 +145,7 @@ For HTTP the equivalent lever is Cache-Control, and the modern pattern is worth 
     category: 'networking',
     short: 'Three packets before a single byte of your data moves.',
     widget: 'tcp-handshake',
-    body: `TCP is connection-oriented, which means both ends agree to talk before any data flows. The client sends SYN, the server replies SYN-ACK, the client sends ACK. That is one full round trip before the request is even sent — and if the server is on another continent, that round trip is 140 milliseconds you have spent on nothing.
+    body: `TCP is connection-oriented, which means both ends agree to talk before any data flows. The client sends SYN, the server replies SYN-ACK, the client sends ACK. That is one full round trip before the request is even sent — and if the server is on another continent, that round trip is around 90 milliseconds you have spent on nothing.
 
 Add TLS and it gets more expensive: TLS 1.2 needs two more round trips, TLS 1.3 needs one, and session resumption can get it to zero for a returning client. This is the entire argument for connection reuse. HTTP keep-alive, connection pools, and HTTP/2 multiplexing all exist to amortise that setup cost across many requests.
 
@@ -170,7 +170,7 @@ UDP skips all of this, which is why it is fast, unreliable, and the preferred ve
 
 The authentication half is what makes the encryption meaningful. Encrypting a conversation with an attacker is not security. That is why certificate validation errors are full-page browser interstitials rather than small warnings, and why a certificate is scoped to specific names.
 
-Operationally, the thing that breaks is expiry. A certificate has a fixed lifetime — now typically around 90 days for automated issuers, and the industry is moving shorter — and when it passes, every client fails simultaneously. It is a scheduled outage that nobody scheduled. The fix is entirely automation: DNS-validated certificates that renew themselves, cert-manager in Kubernetes, and an alarm on days-to-expiry as a backstop.
+Operationally, the thing that breaks is expiry. A certificate has a fixed lifetime — around 90 days for automated issuers, against a public ceiling the CA/Browser Forum has already cut to 200 days, with 100 days from March 2027 and 47 days from March 2029 — and when it passes, every client fails simultaneously. It is a scheduled outage that nobody scheduled. The fix is entirely automation: DNS-validated certificates that renew themselves, cert-manager in Kubernetes, and an alarm on days-to-expiry as a backstop.
 
 Where you terminate TLS is an architectural choice. Terminating at the edge (CDN, load balancer) is fastest and lets your WAF read the request. Terminating at the workload means traffic is encrypted end to end, which some compliance regimes require. Doing both — terminate at the edge, re-encrypt to the backend — is the common compromise.`,
     keyPoints: [
@@ -219,7 +219,7 @@ The subtle trap is the health check itself. A shallow check ("is the process ali
       'Least-outstanding-requests beats round robin when request costs vary.',
       'Never health-check your dependencies from the load balancer, or one failure removes every backend.',
     ],
-    related: ['health-checks', 'osi-model', 'tls-termination', 'self-healing'],
+    related: ['health-checks', 'osi-model', 'tls-termination', 'self-healing', 'http-versions'],
   },
   {
     id: 'anycast',
@@ -328,7 +328,7 @@ The measure to think in is blast radius: if this identity, host or container is 
     short: 'Reach managed services over the provider backbone instead of the public internet.',
     body: `Managed services normally have public endpoints. Traffic from your VPC to an object store or a secrets manager leaves through a NAT gateway, crosses the public internet, and comes back — encrypted, but exposed to the network and billed on the way out.
 
-A private endpoint puts that service inside your network. Gateway endpoints (for object storage and some databases) work by adding a route and are typically free. Interface endpoints place an actual network interface with a private address in your subnet, so the service resolves to an address you own, and bill per hour per zone plus data.
+A private endpoint puts that service inside your network. Gateway endpoints — on AWS, object storage and DynamoDB only — work by adding a route to your route table and are free. Interface endpoints place an actual network interface with a private address in your subnet, so the service resolves to an address you own, and bill per hour per zone plus data.
 
 Three benefits follow. Traffic never traverses the internet, so it cannot be intercepted or observed there. The managed service can have its public endpoint disabled entirely, removing it from every scanner's view. And you stop paying NAT processing charges, which frequently makes interface endpoints cheaper than the thing they replace.
 
@@ -359,7 +359,7 @@ In practice the most valuable boundary to get right is the one between your appl
       '"Inside the network" is not an identity and should grant nothing.',
       'The application-to-data boundary is the highest-value one to harden.',
     ],
-    related: ['zero-trust', 'authn-vs-authz', 'sql-injection', 'network-isolation'],
+    related: ['zero-trust', 'authn-vs-authz', 'sql-injection', 'network-isolation', 'threat-modelling'],
   },
   {
     id: 'bgp',
@@ -385,9 +385,9 @@ You will rarely configure BGP directly unless you run a Direct Connect or Expres
     category: 'networking',
     short: 'Decide how long the whole thing may take, then spend it deliberately.',
     widget: 'latency-ladder',
-    body: `Pick a target — say 200ms at the 95th percentile — and then account for where it goes. The physical parts are not negotiable: a round trip across the Atlantic is roughly 140ms, across the Pacific closer to 200ms, and no amount of optimisation changes the speed of light in fibre. If your users are far away, distance alone can consume the entire budget before your code runs.
+    body: `Pick a target — say 200ms at the 95th percentile — and then account for where it goes. The physical parts are not negotiable: a round trip across the Atlantic is roughly 90ms, and from the US west coast to Tokyo or Sydney roughly 140ms, and no amount of optimisation changes the speed of light in fibre. If your users are far away, distance alone can consume the entire budget before your code runs.
 
-Then the handshakes. TCP costs one round trip, TLS 1.3 one more. For a first-time visitor on another continent, you have spent 400ms before the request is sent. This is why edge termination is not a micro-optimisation: it collapses those round trips to a nearby PoP.
+Then the handshakes. TCP costs one round trip, TLS 1.3 one more. For a first-time visitor across the Atlantic, that is close to 200ms spent before the request is sent, and a cold DNS lookup can add another round trip on top. This is why edge termination is not a micro-optimisation: it collapses those round trips to a nearby PoP.
 
 Then your own system. Each service hop adds its own latency plus a network hop. A serial chain of five services each taking 20ms is 100ms, and any one of them having a bad tail affects everything. Parallelising independent calls turns a sum into a maximum, which is usually the single biggest structural win available.
 
@@ -404,16 +404,85 @@ Finally, remember that queueing is non-linear. A component at 50% utilisation ad
       code: `L1 cache reference                       ~1 ns
 Main memory reference                  ~100 ns
 SSD random read                        ~16 µs
-Round trip within a datacentre         ~0.5 ms
+Round trip within a datacentre         ~0.2 ms
 Round trip, same region                ~1-2 ms
 Round trip, cross-region (US↔EU)      ~80-100 ms
-Round trip, US↔Australia              ~180-200 ms
+Round trip, US west coast↔Australia   ~140-160 ms
+Round trip, US east coast↔Australia   ~230-250 ms
 
 TCP handshake       = 1 round trip
 TLS 1.3 handshake   = 1 more round trip
 So a cold HTTPS request from Sydney to Virginia
-costs roughly 600 ms before your server does anything.`,
+costs roughly 500 ms before your server does anything.`,
     }],
     related: ['tcp-handshake', 'tls-handshake', 'cdn', 'capacity-planning'],
+  },
+  {
+    id: 'http-versions',
+    title: 'HTTP/1.1, HTTP/2 and HTTP/3',
+    category: 'networking',
+    short: 'Three protocols with the same semantics and very different behaviour under loss and concurrency.',
+    body: `All three versions express the same thing — methods, paths, headers, bodies — and differ in how bytes reach the wire. The differences show up exactly where performance problems live.
+
+HTTP/1.1 effectively sends one request at a time per connection: it defines pipelining, but responses must come back in order, so a slow one still blocks the rest and browsers disabled it. Browsers work around this by opening about six connections per origin, which is why domain sharding and asset concatenation were standard advice for years. Each connection costs a TCP handshake and a TLS handshake, and a slow response blocks everything behind it on that connection.
+
+HTTP/2 multiplexes many streams over one connection, with header compression. One connection, no per-request queueing at the application layer, and much of the old optimisation advice becomes unnecessary or harmful. Its original priority signalling was deprecated in RFC 9113 and replaced by a simpler scheme carried in a header field, so do not count on stream priority unless you have checked what your stack implements. It has one structural weakness: because all streams share a TCP connection, a single lost packet stalls every stream until it is retransmitted — head-of-line blocking moved from the application layer down to transport.
+
+HTTP/3 fixes that by replacing TCP with QUIC over UDP. Streams are independent at the transport layer, so loss in one does not stall the others; the handshake combines transport and encryption setup, so connections establish in fewer round trips; and connection migration lets a client moving from Wi-Fi to mobile keep its connection rather than starting again, where the server permits it — only clients may migrate, and a server can disable it. The gains are largest exactly where the old problems were worst — lossy mobile networks and high-latency paths — and marginal on a clean fast link.
+
+Practical implications for architecture. Enable HTTP/2 and HTTP/3 at the edge, where the long, lossy, high-latency client path is; the hop from CDN to origin matters far less. Check that intermediaries and UDP are not blocked, since QUIC over UDP is still filtered in some corporate networks, and every implementation falls back. Be aware that a single multiplexed connection changes load balancing: layer 4 balancers distribute connections, so one client connection carrying a thousand requests lands entirely on one backend — which is why gRPC and HTTP/2 traffic generally need a layer 7 proxy to spread requests properly.
+
+gRPC rides on HTTP/2 for exactly these reasons: multiplexed streams, binary framing and bidirectional streaming over a single long-lived connection.`,
+    keyPoints: [
+      'HTTP/1.1 queues per connection; HTTP/2 multiplexes; HTTP/3 removes transport head-of-line blocking.',
+      'QUIC\'s gains are largest on lossy, high-latency networks — enable it at the edge.',
+      'A multiplexed connection pins a client to one backend under layer 4 balancing.',
+      'gRPC depends on HTTP/2 multiplexing and needs a layer 7 proxy to balance well.',
+    ],
+    related: ['tcp-handshake', 'tls-handshake', 'load-balancing', 'cdn'],
+  },
+  {
+    id: 'global-traffic-management',
+    title: 'Global traffic management',
+    category: 'networking',
+    short: 'Sending each user to the right region, and away from a broken one.',
+    body: `Once a system runs in more than one region, something must decide which region a given user reaches, and must stop sending them to a region that is unhealthy. There are two mechanisms, and they behave very differently during a failure.
+
+DNS-based routing answers queries differently by policy: latency-based to the nearest healthy region, geolocation for data residency or content rules, weighted for gradual migration, failover for active-passive. It is simple, works for any protocol, and costs almost nothing. Its weakness is that DNS is cached — by resolvers, by operating systems, and by applications that resolve once at start-up and never again. The TTL is a ceiling on caching that nothing enforces: resolvers may serve a record past expiry when they cannot refresh it, and an application that resolved once ignores it entirely. A DNS failover described as "one minute" routinely takes much longer for some share of clients, and lowering the number does not fix it.
+
+Anycast routing takes the other approach: the same IP address is announced from many locations, and the network delivers each user to the topologically nearest one. Failover is a routing change rather than a client-side cache expiry, so it is far faster and needs nothing from the client. This is how global load balancers and CDN entry points work, and it is why they are the better choice for fast regional failover.
+
+Health checking is what makes either useful, and its design decides whether failover helps. Check a deep endpoint that exercises the dependencies a real request needs, not a static page that returns 200 while the database is unreachable. Require several consecutive failures to avoid flapping on one bad probe. Check from several locations, because one probe location's network problem is not an outage. And decide deliberately what happens when everything is unhealthy: failing over to nothing serves no one, so many designs fail open and keep sending traffic to the least-bad region.
+
+The part people skip is the data layer. Traffic management moves requests; it does not move the database. Sending European users to a region whose writes still cross the Atlantic to a single primary gains latency on the static content and nothing on the transaction — and failing traffic over to a region whose replica is thirty seconds behind is a data decision, not a networking one.`,
+    keyPoints: [
+      'A DNS TTL is an unenforced ceiling on caching; anycast fails over at the network layer instead.',
+      'Health checks must exercise real dependencies, from several locations, with flap protection.',
+      'Decide what happens when every region is unhealthy before it happens.',
+      'Routing users is not routing writes — the data layer decides what failover really costs.',
+    ],
+    related: ['dns-resolution', 'anycast', 'multi-region', 'health-checks'],
+  },
+  {
+    id: 'egress-control',
+    title: 'Controlling egress',
+    category: 'networking',
+    short: 'Most networks are carefully filtered inbound and wide open outbound, which is where the data leaves.',
+    body: `Ingress filtering gets the attention: security groups, firewalls, WAFs, all shaped around what may reach you. Outbound traffic is usually left unrestricted because restricting it breaks things and nobody wants the support load. That asymmetry is exactly what an attacker relies on — every stage after initial access goes outbound. Downloading tooling, reaching a command-and-control server, and copying your data somewhere else are all egress.
+
+Controlling egress turns a compromise into a contained one. A workload that can only reach your package registry, your cloud APIs through private endpoints, and two named partner domains is a workload whose exfiltration path is closed even after the attacker has code execution. This is the single most valuable control that most environments do not have.
+
+The mechanisms have different resolutions. IP and port rules are cheap and coarse; they work for fixed partner endpoints and not for anything behind a CDN whose addresses change. DNS-layer filtering resolves names to a policy decision and catches a large share of malicious destinations, but is bypassed by anything using a hard-coded IP or its own resolver. An explicit outbound proxy with an allowlist of domains gives the strongest and most auditable control, and inspecting TLS through it is a decision with real privacy and operational consequences. Private endpoints remove whole categories from the internet entirely — reaching object storage over a private link means the path to your data never traverses the public internet, and a policy on that endpoint can restrict it to your own buckets.
+
+Watch for the DNS exfiltration path specifically, because it defeats most allowlists: data encoded into hostnames leaves through the resolver you allowed. Logging and inspecting DNS queries is the countermeasure.
+
+Introduce it in stages or it will be reverted. Start in log-only mode and observe what actually egresses — the list will contain surprises, including telemetry from libraries nobody knew about. Build the allowlist from that evidence, enforce in non-production first, and give teams a self-service path to request a destination. An egress policy that requires a ticket and three days will be routed around, and then you have neither the control nor the visibility.`,
+    keyPoints: [
+      'Inbound is filtered, outbound rarely is — and exfiltration is outbound.',
+      'Proxies with domain allowlists give the strongest control; IP rules are too coarse for modern endpoints.',
+      'Private endpoints remove whole services from the internet path entirely.',
+      'Roll out in log-only mode first; a slow exception process guarantees the policy is bypassed.',
+    ],
+    related: ['data-exfiltration', 'private-connectivity', 'least-privilege-network', 'nat-vs-igw'],
   },
 ]

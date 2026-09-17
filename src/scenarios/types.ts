@@ -4,7 +4,7 @@ import type { ActiveIncident, SimGraph, SimState } from '@/sim/types'
 import type { SavedDiagram } from '@/store/types'
 
 export type Difficulty = 'intro' | 'easy' | 'medium' | 'hard' | 'expert'
-export type Track = 'foundations' | 'reliability' | 'security' | 'kubernetes' | 'cost'
+export type Track = 'foundations' | 'reliability' | 'security' | 'kubernetes' | 'operations' | 'platform' | 'cost'
 
 export interface MissionContext {
   graph: SimGraph
@@ -82,5 +82,7 @@ export const TRACK_META: Record<Track, { label: string; blurb: string }> = {
   reliability: { label: 'Reliability', blurb: 'Surviving failure without surprising users' },
   security: { label: 'Security', blurb: 'Attacks, and the controls that stop them' },
   kubernetes: { label: 'Kubernetes', blurb: 'Scheduling, probes and the control loop' },
+  operations: { label: 'Delivery & operations', blurb: 'Shipping changes and knowing what happened' },
+  platform: { label: 'Platform engineering', blurb: 'The paved road other teams build on' },
   cost: { label: 'Cost', blurb: 'The same outcome for less money' },
 }

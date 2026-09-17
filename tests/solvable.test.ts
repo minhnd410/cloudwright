@@ -4,6 +4,7 @@ import { buildContext } from '@/scenarios/context'
 import { review } from '@/sim/advisor'
 import { run } from '@/sim/engine'
 import { defaultProps, requireResource } from '@/catalog/registry'
+import { makeIncident } from '@/sim/incidents'
 import { getPort } from '@/catalog/registry'
 import { pickPrimaryFlow } from '@/catalog/schema/rules'
 import type { PropBag, PropValue } from '@/catalog/schema/types'
@@ -26,6 +27,12 @@ interface Patch {
   remove?: string[]
   /** Edges to remove, as [source, target] — for re-routing through a new control. */
   unwire?: [string, string][]
+  /**
+   * Node ids whose seeded fault the fix actually removes — an OOM kill stops
+   * once the memory limit is raised. Faults not listed here stay active, which
+   * is how a mission that asks you to ride one out gets proved.
+   */
+  resolves?: string[]
 }
 
 function solve(missionId: string, patch: Patch, ticks = 45) {
@@ -75,8 +82,20 @@ function solve(missionId: string, patch: Patch, ticks = 45) {
   }
 
   const graph: SimGraph = { nodes, edges }
-  const sim = run(graph, ticks)
-  const ctx = buildContext(graph, sim, review(graph), [])
+
+  // Seeded faults are part of the mission, so a solution has to hold up with
+  // them active — otherwise the test proves an easier problem than the player gets.
+  const incidents = (mission.startIncidents ?? [])
+    .filter((seed) => nodes.some((n) => n.id === seed.nodeId))
+    .filter((seed) => !(patch.resolves ?? []).includes(seed.nodeId))
+    .flatMap((seed) => {
+      const node = nodes.find((n) => n.id === seed.nodeId)!
+      const mode = (requireResource(node.defId).sim?.failureModes ?? []).find((m) => m.id === seed.modeId)
+      return mode ? [makeIncident(seed.nodeId, mode, 0)] : []
+    })
+
+  const sim = run(graph, ticks, undefined, incidents)
+  const ctx = buildContext(graph, sim, review(graph), incidents)
 
   const done: string[] = []
   const missing: string[] = []
@@ -182,6 +201,7 @@ describe('missions are winnable', () => {
         cluster: P({ rbac: 'scoped', privateEndpoint: true }),
       },
       add: [['netpol', 'k8s.networkpolicy', P({ defaultDeny: true, egressControl: true })]],
+      resolves: ['web'],
     })
   })
 
@@ -272,6 +292,120 @@ describe('missions are winnable', () => {
         ['app', 'telemetry', 'mon', 'in'],
       ],
       unwire: [['net', 'alb']],
+    })
+  })
+
+  it('The Pager', () => {
+    expectSolved('the-pager', {
+      props: {
+        cw: P({ alarmStrategy: 'symptom', logRetention: 30 }),
+        alb: P({ accessLogs: true, healthPath: '/healthz' }),
+        app: P({ replicas: 5, size: 'm5.large' }),
+      },
+      wire: [
+        ['db', 'telemetry', 'cw', 'in'],
+        ['alb', 'telemetry', 'cw', 'in'],
+      ],
+      // Shipping logs off the box is the remedy for the full root volume, so
+      // the player clears that fault rather than scaling around it.
+      resolves: ['app'],
+    })
+  })
+
+  it('Ship It', () => {
+    expectSolved('ship-it', {
+      props: {
+        pipe: P({ strategy: 'canary', autoRollback: true, gates: ['tests', 'scan', 'smoke'] }),
+        alb: P({ deregistrationDelay: 60 }),
+      },
+      add: [
+        ['ecr', 'aws.ecr', P({ immutableTags: true, scanOnPush: true })],
+        ['cw', 'aws.cloudwatch', P({ alarmStrategy: 'symptom' })],
+      ],
+      wire: [
+        ['ecr', 'out', 'app', 'deploy'],
+        ['app', 'telemetry', 'cw', 'in'],
+      ],
+    })
+  })
+
+  it('The Paved Road', () => {
+    expectSolved('paved-road', {
+      props: {
+        cluster: P({ rbac: 'scoped', privateEndpoint: true }),
+        pool: P({ spreadZones: true, autoscale: true, nodeCount: 3 }),
+        web: P({
+          replicas: 3, cpuRequest: 250, cpuLimit: 0, memRequest: 512, memLimit: 1024,
+          livenessProbe: 'http', readinessProbe: true, pdb: true, antiAffinity: true, runAsNonRoot: true,
+        }),
+        cfg: P({ secretSource: 'external', encryptedAtRest: true }),
+        ingress: P({ tls: true, controller: 'gateway-api' }),
+      },
+      add: [
+        ['hpa', 'k8s.hpa', P({ minReplicas: 3, maxReplicas: 12, metric: 'cpu', targetValue: 65 })],
+        ['netpol', 'k8s.networkpolicy', P({ defaultDeny: true, egressControl: true })],
+        ['ecr', 'aws.ecr', P({ immutableTags: true, scanOnPush: true })],
+        ['cw', 'aws.cloudwatch', P({ alarmStrategy: 'symptom' })],
+      ],
+      wire: [
+        ['ecr', 'out', 'web', 'config'],
+        ['web', 'telemetry', 'cw', 'in'],
+        ['db', 'telemetry', 'cw', 'in'],
+      ],
+    })
+  })
+
+  it('The Drill', () => {
+    expectSolved('the-drill', {
+      props: {
+        db: P({ backupRetention: 21, deletionProtection: true, readReplicas: 1, size: 'db.m5.xlarge' }),
+        docs: P({ versioning: true, lifecycle: true, encryption: 'cmk' }),
+        cw: P({ alarmStrategy: 'symptom' }),
+        app: P({ replicas: 5, size: 'm5.large' }),
+      },
+      add: [
+        ['kms', 'aws.kms', P({ rotation: true, multiRegion: true })],
+        ['cache', 'aws.elasticache', P({ nodeType: 'cache.m6g.large' })],
+      ],
+      wire: [
+        ['kms', 'out', 'docs', 'identity'],
+        ['app', 'out', 'cache', 'in'],
+        ['db', 'telemetry', 'cw', 'in'],
+      ],
+    })
+  })
+
+  it('Cell Division', () => {
+    expectSolved('cell-division', {
+      props: {
+        app: P({ replicas: 4, size: 'm5.xlarge', autoscale: true, maxReplicas: 8 }),
+        db: P({ size: 'db.m5.xlarge', multiAz: true, backupRetention: 7 }),
+      },
+      add: [
+        ['edge', 'aws.cloudfront', P({ cachePolicy: 'optimized' })],
+        ['alb2', 'aws.alb'],
+        ['app2', 'aws.ec2', P({ replicas: 4, size: 'm5.xlarge', autoscale: true, maxReplicas: 8 })],
+        ['db2', 'aws.rds', P({ size: 'db.m5.xlarge', multiAz: true, backupRetention: 7 })],
+        ['alb3', 'aws.alb'],
+        ['app3', 'aws.ec2', P({ replicas: 4, size: 'm5.xlarge', autoscale: true, maxReplicas: 8 })],
+        ['db3', 'aws.rds', P({ size: 'db.m5.xlarge', multiAz: true, backupRetention: 7 })],
+      ],
+      unwire: [['net', 'alb']],
+      wire: [
+        ['net', 'out', 'edge', 'in'],
+        ['edge', 'origin', 'alb', 'in'],
+        ['edge', 'origin', 'alb2', 'in'],
+        ['edge', 'origin', 'alb3', 'in'],
+        ['alb2', 'out', 'app2', 'in'],
+        ['app2', 'out', 'db2', 'in'],
+        ['alb3', 'out', 'app3', 'in'],
+        ['app3', 'out', 'db3', 'in'],
+        ['app2', 'telemetry', 'cw', 'in'],
+        ['app3', 'telemetry', 'cw', 'in'],
+        ['db', 'telemetry', 'cw', 'in'],
+        ['db2', 'telemetry', 'cw', 'in'],
+        ['db3', 'telemetry', 'cw', 'in'],
+      ],
     })
   })
 })

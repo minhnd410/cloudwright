@@ -30,7 +30,7 @@ export function MissionsPage() {
   return (
     <PageShell
       eyebrow="Missions"
-      title="Ten scenarios, each one a real problem"
+      title="Fifteen scenarios, each one a real problem"
       lede={`Every mission drops you into a situation somebody has actually been paged for. Fix it on the canvas, and the debrief tells you what the lesson was. ${completed.length} of ${MISSIONS.length} complete.`}
     >
       <div className="space-y-10">

@@ -8,7 +8,7 @@ export const security: Concept[] = [
     short: 'Every identity gets exactly what it needs, because that is what bounds the damage.',
     body: `Least privilege is not bureaucracy. It is the variable that decides, on the day something is compromised, whether you lose one bucket or the account.
 
-The method that works: start from nothing and add what breaks. Starting from a broad policy and narrowing it later almost never happens, because nothing is broken so nothing is urgent. Cloud providers now generate policies from observed usage — IAM Access Analyzer, Policy Analyzer — which makes the tightening step mechanical rather than archaeological.
+The method that works: start from nothing and add what breaks. Starting from a broad policy and narrowing it later almost never happens, because nothing is broken so nothing is urgent. Cloud providers now derive tighter policies from observed usage — IAM Access Analyzer generates one from CloudTrail, and GCP's role recommendations propose a narrower role from ninety days of actual permission use — which makes the tightening step mechanical rather than archaeological.
 
 Scope matters as much as actions. ‘s3:GetObject’ on one bucket prefix is a different grant from ‘s3:*’ on everything, and both are written in three lines. Condition keys narrow further without enumerating resources: requiring a source VPC means a stolen credential is useless from outside your network; requiring MFA means a stolen session is not enough.
 
@@ -21,25 +21,25 @@ And separate human roles from workload roles. They have different lifecycles, di
       'PassRole is the classic cloud escalation path.',
       'Human and workload identities should never share a role.',
     ],
-    related: ['blast-radius', 'zero-trust', 'authn-vs-authz', 'rbac'],
+    related: ['blast-radius', 'zero-trust', 'authn-vs-authz', 'rbac', 'workload-identity'],
   },
   {
     id: 'least-privilege-network',
     title: 'Least privilege on the network',
     category: 'security',
     short: 'Default deny, then allow exactly what is needed — in both directions.',
-    body: `The network equivalent of least privilege: nothing can reach anything until a rule says so. Cloud firewalls are already allow-lists by default (a security group with no rules permits nothing inbound), so most of the work is not undoing that with a permissive rule.
+    body: `The network equivalent of least privilege: nothing can reach anything until a rule says so. Most cloud firewalls are allow-lists by default — an AWS security group with no rules permits nothing inbound, and GCP's implied rule denies ingress — so most of the work is not undoing that with a permissive rule. Azure is the exception worth knowing: a network security group ships with a default rule permitting all traffic from anywhere in the virtual network, so anything already inside the VNet reaches you until you override it.
 
 Reference identities rather than addresses. A rule saying "allow from the web tier's security group" stays correct forever as instances come and go; a rule listing IP ranges is stale the moment something scales. GCP goes further by letting rules target service accounts, which is stronger than tags because a tag can be added by anyone with instance edit permission.
 
-Ports are a policy statement. Every open port needs a patched service behind it. SSH and RDP open to the internet are the two most brute-forced ports there are, and they are also entirely avoidable — Session Manager, IAP and Bastion all give you administrative access with no inbound port at all.
+Ports are a policy statement. Every open port needs a patched service behind it. SSH and RDP open to the internet are among the most brute-forced ports there are, and they are also entirely avoidable — Session Manager, IAP and Bastion all give you administrative access with no inbound port at all.
 
 And then the half almost everyone skips: egress. Outbound is permitted by default nearly everywhere, which is precisely the path used to exfiltrate data and to reach a command-and-control server. Restricting egress is more work — you have to know what your workloads legitimately call — and it is the control that turns a compromise into a contained one.`,
     keyPoints: [
       'Reference security groups, labels or service accounts, never IP lists.',
       'Never expose management ports; use Session Manager, IAP or Bastion.',
       'Egress is permitted by default and is how data leaves.',
-      'Cloud firewalls are allow-lists already — the risk is a permissive rule.',
+      'AWS and GCP deny inbound by default; an Azure NSG allows the whole VNet until you override it.',
     ],
     related: ['network-segmentation', 'stateful-vs-stateless-firewall', 'data-exfiltration', 'zero-trust'],
   },
@@ -63,7 +63,7 @@ The adoption order that works: eliminate long-lived credentials first, then add 
       'Mutual TLS makes service identity cryptographic rather than positional.',
       'Complements segmentation rather than replacing it.',
     ],
-    related: ['least-privilege', 'network-segmentation', 'authn-vs-authz', 'secrets-management'],
+    related: ['least-privilege', 'network-segmentation', 'authn-vs-authz', 'secrets-management', 'mtls'],
   },
   {
     id: 'blast-radius',
@@ -85,7 +85,7 @@ Make it a design habit. Asking "what is the blast radius of this service account
       'Separate accounts bound identity and network together.',
       'Ask it during design review, not during the incident.',
     ],
-    related: ['least-privilege', 'network-segmentation', 'lateral-movement', 'defence-in-depth'],
+    related: ['least-privilege', 'network-segmentation', 'lateral-movement', 'defence-in-depth', 'cell-based-architecture', 'shuffle-sharding'],
   },
   {
     id: 'defence-in-depth',
@@ -107,7 +107,7 @@ The layers also have very different costs. Network policy and IAM scoping are fr
       'Free structural layers — IAM scoping, network policy — first.',
       'The attacker must beat every layer; you only need one to hold.',
     ],
-    related: ['blast-radius', 'waf', 'network-segmentation', 'owasp-top-10'],
+    related: ['blast-radius', 'waf', 'network-segmentation', 'owasp-top-10', 'threat-modelling'],
   },
   {
     id: 'authn-vs-authz',
@@ -151,14 +151,14 @@ Some platforms add attribute-based conditions on top — tags, request context, 
       'cluster-admin everywhere makes namespaces meaningless as a boundary.',
       'Audit effective permissions; inherited grants are invisible otherwise.',
     ],
-    related: ['least-privilege', 'authn-vs-authz', 'kubernetes-architecture', 'blast-radius'],
+    related: ['least-privilege', 'authn-vs-authz', 'kubernetes-architecture', 'blast-radius', 'admission-control'],
   },
   {
     id: 'secrets-management',
     title: 'Secrets management',
     category: 'security',
     short: 'The goal is not encryption. It is that the secret never exists where it can leak.',
-    body: `A secret in a repository is a published secret — history is forever, and scanners find them within minutes of a push. A secret in an environment variable is readable by anything that can read the process environment, which includes most crash reporters. A secret in a container image ships to everyone who can pull it.
+    body: `A secret in a repository is a published secret — history is forever, both attackers and defenders scan public commits continuously, and the measured problem is not detection but revocation: most leaked credentials are still valid years later. A secret in an environment variable is readable by anything that can read the process environment, which includes most crash reporters. A secret in a container image ships to everyone who can pull it.
 
 A secrets manager fixes this by keeping the value outside your artefacts. The application fetches it at runtime using an identity it already has — a managed identity, an instance role, a workload identity — so there is no bootstrap credential to protect. Every access is logged, and rotation is a schedule rather than a project.
 
@@ -173,7 +173,7 @@ A note on Kubernetes: a Secret object is base64-encoded, not encrypted. "Can rea
       'Rotation bounds leak lifetime and proves the app can handle a change.',
       'Kubernetes Secrets are base64, not encrypted.',
     ],
-    related: ['credential-rotation', 'zero-trust', 'least-privilege', 'key-management'],
+    related: ['credential-rotation', 'zero-trust', 'least-privilege', 'key-management', 'workload-identity'],
   },
   {
     id: 'credential-rotation',
@@ -184,7 +184,7 @@ A note on Kubernetes: a Secret object is base64-encoded, not encrypted. "Can rea
 
 Modern cloud platforms mostly solve this by removing static credentials entirely. An instance profile, a managed identity or a Kubernetes service account token is issued on demand, valid for minutes to hours, and refreshed automatically. There is nothing to rotate because nothing persists.
 
-Where a real secret is unavoidable — a database password, a third-party API key — automated rotation is the answer. The mechanics that make it non-disruptive are worth knowing: support two valid credentials during the changeover, update the store first and the consumer second, and verify before retiring the old one. Managed rotation in Secrets Manager and Key Vault implements exactly this.
+Where a real secret is unavoidable — a database password, a third-party API key — automated rotation is the answer. The mechanics that make it non-disruptive are worth knowing: support two valid credentials during the changeover, stage the new value before applying it at the service, test it, and only then promote it and retire the old one. AWS Secrets Manager implements exactly this with its alternating-users strategy. Azure Key Vault rotates keys and renews certificates itself, but for a secret it only raises a near-expiry event — you supply the function that regenerates the credential at the service and writes the new version.
 
 The test nobody runs until it fails: does your application actually pick up a rotated credential without a restart? A secret mounted as a file usually updates; one injected as an environment variable does not. Rotating a credential your application caches forever is how rotation becomes an outage.
 
@@ -201,27 +201,27 @@ And when rotation is genuinely impossible, at least detect: scan repositories, a
     id: 'owasp-top-10',
     title: 'The OWASP Top Ten, condensed',
     category: 'security',
-    short: 'The vulnerability classes that actually appear, in rough order of frequency.',
-    body: `Broken access control is consistently first. The API checks you are logged in but not that the record is yours, so changing an id in the URL returns someone else's data. Fix: authorise per resource, server-side, on every request.
+    short: 'The vulnerability classes that actually appear, in the order OWASP ranks them.',
+    body: `Broken access control is first again in the 2025 edition, and every application tested had some form of it. The API checks you are logged in but not that the record is yours, so changing an id in the URL returns someone else's data. Server-side request forgery now sits inside this category rather than beside it, on the reasoning that a server made to fetch an attacker's URL is reaching a resource it was never authorised to reach. Fix: authorise per resource, server-side, on every request.
+
+Security misconfiguration is second, up four places: default credentials, verbose errors, an unnecessary management interface, a public bucket. Fix: harden by default, and scan configuration the way you scan code.
+
+Software supply chain failures is third, and new — it broadens the old "vulnerable components" category to cover a compromised build system, a poisoned package or a malicious maintainer as well as a merely outdated dependency. Fix: pin by digest, scan on a schedule rather than on an incident, and verify provenance at deploy.
 
 Cryptographic failures: data in transit without TLS, at rest without encryption, passwords hashed with something fast rather than bcrypt or argon2. Fix: TLS everywhere, encryption on by default, a password hash designed to be slow.
 
-Injection — SQL, command, LDAP, template. Always caused by concatenating untrusted input into something that gets interpreted. Fix: parameterised queries and safe APIs, never string building.
+Injection — SQL, command, LDAP, template — has fallen to fifth, which says more about how well parameterisation has spread than about the severity. It is always caused by concatenating untrusted input into something that gets interpreted. Fix: parameterised queries and safe APIs, never string building.
 
 Insecure design: the flaw is in the requirements, not the implementation. A password reset that reveals whether an account exists cannot be patched, only redesigned.
 
-Security misconfiguration: default credentials, verbose errors, an unnecessary management interface, a public bucket. Fix: harden by default, and scan configuration the way you scan code.
-
-Vulnerable components: your dependencies and base images carry more known vulnerabilities than your code does. Fix: scan and update on a schedule, not on an incident.
-
-Also present and worth naming: identification and authentication failures (weak sessions, no MFA), software and data integrity failures (unsigned artefacts, supply-chain compromise), logging failures (you cannot investigate what you did not record), and SSRF (the server fetches a URL an attacker chose).`,
+Also present and worth naming: authentication failures (weak sessions, no MFA), software or data integrity failures (unsigned artefacts, a compromised pipeline), security logging and alerting failures — the rename matters, because a log nobody is alerted on is a record nobody reads — and mishandling of exceptional conditions, new for 2025, covering error paths that fail open, swallow a failure, or leak internals in a stack trace.`,
     keyPoints: [
-      'Broken access control is the most common, by a wide margin.',
+      'Broken access control is first again: every application tested had some form of it.',
+      'Supply chain failures are now their own category, covering the build system as well as the dependency.',
       'Injection is always string concatenation; parameterisation is the complete fix.',
-      'Most vulnerabilities in a container come from the base image.',
-      'Insufficient logging means you cannot investigate what happened.',
+      'Logging without alerting, and error paths that fail open, are both named categories now.',
     ],
-    related: ['sql-injection', 'ssrf', 'authn-vs-authz', 'supply-chain-security'],
+    related: ['sql-injection', 'ssrf', 'authn-vs-authz', 'supply-chain-security', 'sbom-and-provenance'],
   },
   {
     id: 'sql-injection',
@@ -263,9 +263,9 @@ db.query('SELECT * FROM users WHERE email = $1', [email])
     short: 'Make the server fetch a URL, and it reaches things the attacker cannot.',
     body: `Any endpoint that fetches a user-supplied URL — a webhook registration, an image importer, a PDF renderer, a link preview — can be pointed somewhere unintended. Your server is inside the network; the attacker is not. That asymmetry is the whole vulnerability.
 
-The canonical target in cloud environments is the instance metadata endpoint at 169.254.169.254, which hands out the machine's IAM credentials to anything on the host that asks. One "fetch this URL for me" bug becomes full use of the instance's permissions. This is exactly how several large cloud breaches happened.
+The canonical target in cloud environments is the instance metadata endpoint at 169.254.169.254, which hands out the machine's IAM credentials to anything on the host that asks. One "fetch this URL for me" bug becomes full use of the instance's permissions. This is how the Capital One breach worked in 2019: an SSRF in a web application firewall read the instance role's credentials from IMDSv1 and used them against a hundred million customer records in object storage.
 
-The specific defence is IMDSv2 and its equivalents: metadata requests must carry a session token obtained by a PUT with a low IP hop limit, which a simple proxied GET cannot produce. Requiring it is a single setting and it closes this path. GCP and Azure have equivalent protections.
+The specific defence is IMDSv2. Metadata requests must carry a session token, and that token comes only from a PUT with a custom header — something an endpoint that fetches a URL for you cannot issue. The response to that PUT has an IP hop limit of one by default, so the token cannot be relayed off the host either. Requiring it is a single setting, and since 2024 it can be the account default so every new launch is IMDSv2-only. GCP and Azure reach the same place by a simpler route: their metadata services reject any request that does not carry a specific header, and those checks are always on rather than opt-in.
 
 Beyond that: allow-list destination hosts rather than blocking known-bad ones (blocklists lose to alternative encodings, DNS rebinding, and redirects); resolve the hostname and validate the resulting address *after* following redirects, not just the original URL; and use egress rules so workloads cannot reach internal ranges at all.
 
@@ -320,7 +320,7 @@ Set limits generously enough that no legitimate user notices, and specifically e
       'Token buckets permit bursts while capping sustained rate.',
       'Return 429 with Retry-After so clients back off correctly.',
     ],
-    related: ['backpressure', 'waf', 'ddos-mitigation', 'api-gateway-pattern'],
+    related: ['backpressure', 'waf', 'ddos-mitigation', 'api-gateway-pattern', 'load-shedding'],
   },
   {
     id: 'ddos-mitigation',
@@ -384,20 +384,20 @@ The realistic framing: assume someone will eventually have read access they shou
       'Customer-managed keys make exported data useless without the key.',
       'Anomalous outbound volume is a strong detection signal.',
     ],
-    related: ['least-privilege-network', 'private-connectivity', 'encryption-at-rest', 'lateral-movement'],
+    related: ['least-privilege-network', 'private-connectivity', 'encryption-at-rest', 'lateral-movement', 'egress-control'],
   },
   {
     id: 'ransomware-resilience',
     title: 'Ransomware resilience',
     category: 'security',
     short: 'Whether you recover was decided months before the attack.',
-    body: `Modern ransomware operations do not encrypt immediately. They dwell — often for weeks — and spend that time finding and destroying backups, because a victim who can restore does not pay. By the time encryption starts, the recovery options have usually already been removed.
+    body: `Modern ransomware operations rarely encrypt the moment they arrive, but the window is shorter than people expect: median dwell time is now measured in days, and the payload often lands within a day of initial access. What operators use that time for has changed — the current pattern is recovery denial, deleting backup objects, taking over identity services, and encrypting hypervisor datastores so every virtual machine fails together. A victim who can restore does not pay, so the ability to restore is what gets attacked first.
 
 That changes what "having backups" has to mean. Immutable backups that cannot be deleted or altered for a retention period, even by an administrator, are the control that works: object lock, retention policies, vault lock. If a sufficiently privileged credential can delete the backup, assume the attacker will have that credential.
 
 Second: isolation. Backups in a separate account or subscription, with separate credentials and no trust path from production. Compromising production must not grant access to the backups.
 
-Third: retention longer than a plausible dwell time. Thirty days of backups is no help against an attacker who was inside for sixty — every copy you hold is already poisoned.
+Third: retention longer than the time you would plausibly take to notice, which is a different and much larger number than the time an attacker spends inside. Thirty days of backups is no help against an encryption event discovered in the second month.
 
 Fourth, and the one most often skipped: a tested restore, with a measured elapsed time. A backup nobody has restored is a hypothesis.
 
@@ -405,10 +405,10 @@ Then the prevention layers that shrink the odds: MFA everywhere, least privilege
     keyPoints: [
       'Attackers destroy backups before encrypting. Immutability is the answer.',
       'Backups belong in a separate account with separate credentials.',
-      'Retention must exceed plausible dwell time, or every copy is poisoned.',
+      'Retention must exceed the time you would take to notice, not the time an attacker spends inside.',
       'Measure a real restore. An untested backup is not a plan.',
     ],
-    related: ['data-durability', 'rpo-rto', 'blast-radius', 'least-privilege'],
+    related: ['data-durability', 'rpo-rto', 'blast-radius', 'least-privilege', 'disaster-recovery'],
   },
   {
     id: 'supply-chain-security',
@@ -430,7 +430,7 @@ Artefact signing and provenance attestations close the loop: verify at deploy ti
       'The pipeline can deploy to production; treat its identity accordingly.',
       'Sign artefacts and verify provenance at deploy time.',
     ],
-    related: ['ci-cd', 'immutable-infrastructure', 'least-privilege', 'containers'],
+    related: ['ci-cd', 'immutable-infrastructure', 'least-privilege', 'containers', 'sbom-and-provenance'],
   },
   {
     id: 'subdomain-takeover',
@@ -483,7 +483,7 @@ Domain validation proves you control the name, and is now fully automated — pu
 
 Internal PKI is the same structure with your own root. A private CA issues certificates for internal services, and every workload trusts your root. Service meshes use this to give each workload a certificate identity and negotiate mutual TLS automatically, which is what makes identity in a mesh cryptographic rather than based on IP address.
 
-Two things to keep in view. Certificate transparency logs record every publicly issued certificate, so monitoring them tells you when someone obtains a certificate for your domain — one of the few ways to detect a subdomain takeover or a registrar compromise early. And certificate lifetimes keep getting shorter, which is deliberate: short lifetimes limit the damage of a key compromise and force the automation that makes expiry a non-event.`,
+Two things to keep in view. Certificate transparency logs record every publicly issued certificate, so monitoring them tells you when someone obtains a certificate for your domain — one of the few ways to detect a subdomain takeover or a registrar compromise early. And certificate lifetimes are being cut on a fixed schedule towards 47 days in 2029, which is deliberate: short lifetimes limit the damage of a key compromise and force the automation that makes expiry a non-event.`,
     keyPoints: [
       'Validation is a chain of signatures ending at a pre-trusted root.',
       'Domain validation is automated and free, which is why HTTPS is universal.',
@@ -499,11 +499,11 @@ Two things to keep in view. Certificate transparency logs record every publicly 
     short: 'Expiry is a scheduled outage nobody scheduled.',
     body: `A certificate expires at a specific moment, and when it does every client fails at once. There is no gradual degradation and no partial failure — browsers show a full-page interstitial, API clients throw, mobile apps stop working. It is one of the most predictable and most common self-inflicted outages there is.
 
-The fix is automation end to end. Use DNS validation, which renews without human involvement, and leave the validation record in place forever — removing it does nothing today and quietly breaks renewal thirteen months later. Use managed certificates (ACM, Google-managed, Key Vault) or cert-manager in Kubernetes. Then alarm on days-to-expiry as a backstop, because automation also fails and you want to know weeks early rather than at the moment of expiry.
+The fix is automation end to end. Use DNS validation, which renews without human involvement, and leave the validation record in place forever — removing it does nothing today and quietly breaks renewal a few months later, when the authority next has to revalidate the name. Use managed certificates (ACM, Google-managed, App Service and Front Door managed certificates on Azure) or cert-manager in Kubernetes. Then alarm on days-to-expiry as a backstop, because automation also fails and you want to know weeks early rather than at the moment of expiry.
 
-Certificate lifetimes are shrinking across the industry, which makes manual renewal steadily less viable and automation steadily more necessary. That is the intent.
+Certificate lifetimes are on a published reduction schedule: a 200-day maximum since March 2026, 100 days from March 2027 and 47 days from March 2029. Manual renewal stops being viable somewhere on that curve. That is the intent.
 
-Provider-specific things that catch people. A certificate for CloudFront must be issued in us-east-1 regardless of where everything else lives. ACM certificates cannot be exported, so they only work with services that integrate with ACM. And in Kubernetes, cert-manager needs its issuer configured and its challenge path reachable, or certificates silently stay pending.
+Provider-specific things that catch people. A certificate for CloudFront must be issued in us-east-1 regardless of where everything else lives. An ACM certificate can only be exported if you asked for an exportable one when you issued it, and those carry a per-name charge; the free ones work solely with services that integrate with ACM. And in Kubernetes, cert-manager needs its issuer configured and its challenge path reachable, or certificates silently stay pending.
 
 Finally: monitor from outside. Check the certificate the way a user sees it, not the way your configuration claims it is.`,
     keyPoints: [
@@ -519,11 +519,11 @@ Finally: monitor from outside. Check the certificate the way a user sees it, not
     title: 'Compliance, practically',
     category: 'security',
     short: 'Mostly a demand for evidence that you already do sensible things.',
-    body: `SOC 2, ISO 27001, PCI DSS, HIPAA and GDPR differ in scope but overlap heavily in what they ask for: access control, encryption, logging and monitoring, change management, backup and recovery, vendor management, and incident response.
+    body: `SOC 2, ISO 27001, PCI DSS (v4.0.1, with the last of its phased-in requirements mandatory since March 2025), HIPAA and GDPR differ in scope but overlap heavily in what they ask for: access control, encryption, logging and monitoring, change management, backup and recovery, vendor management, and incident response.
 
 The realisation that makes compliance tractable is that these are the same practices that make a system reliable and secure. Least privilege, encryption at rest and in transit, audit logs with meaningful retention, reviewed changes, tested restores. If you do those, compliance is largely a documentation and evidence exercise rather than new engineering.
 
-What genuinely does change the architecture: data residency, which constrains regions; retention requirements, which set log and backup lifetimes; separation of duties, which means the person who writes the code is not the person who approves the production deploy; and audit trails that must be tamper-evident, which means append-only or immutable log storage.
+What genuinely does change the architecture: data residency, which constrains regions — GDPR restricts transfers rather than mandating a location, while sector and national rules often do pin data to one; retention requirements, which set log and backup lifetimes; separation of duties, which means the person who writes the code is not the person who approves the production deploy; and audit trails that must be tamper-evident, which means append-only or immutable log storage.
 
 Cloud providers do a lot of the work through the shared responsibility model — they certify the infrastructure, you are responsible for what you build on it. Their compliance programmes cover the datacentre, not your IAM policy.
 
@@ -534,6 +534,138 @@ The practical advice: encode controls as infrastructure-as-code policy checks ra
       'Residency, retention and separation of duties genuinely change design.',
       'Encode controls as automated policy checks, not as documents.',
     ],
-    related: ['encryption-at-rest', 'key-management', 'observability', 'least-privilege'],
+    related: ['encryption-at-rest', 'key-management', 'observability', 'least-privilege', 'policy-as-code', 'audit-logging'],
+  },
+  {
+    id: 'sbom-and-provenance',
+    title: 'SBOMs and build provenance',
+    category: 'security',
+    short: 'One says what is inside the artefact; the other proves where it came from.',
+    body: `When a vulnerability is announced in a widely used library, the question that decides your day is simple and usually unanswerable: do we ship it, and where? A software bill of materials answers it. An SBOM is a machine-readable inventory of the components in an artefact — names, versions, licences, hashes — in one of two common formats, SPDX or CycloneDX. Generate it during the build, where the resolved dependency graph is actually known, and store it alongside the image so the inventory and the artefact cannot drift apart.
+
+Provenance answers the other half. It is a signed statement, produced by the build system, describing how the artefact was made: which source commit, which builder, which parameters, which dependencies. An SBOM tells you what is inside; provenance tells you that this image really was built from that commit by your pipeline, and not pushed to the registry by someone with a stolen token.
+
+SLSA is the framework that grades this, and its build track (v1.2 is current) rises through four levels: no provenance at all; provenance that exists but is trivial to forge; provenance generated and signed by a hosted build platform rather than by the build's own tenant; and a hardened platform with isolated builds whose signing key the user-defined build steps cannot reach. The levels are useful mainly as a sequence: getting to signed provenance from a hosted builder is achievable for most teams and eliminates a whole class of attack.
+
+Sigstore removed the traditional obstacle, which was key management. Keyless signing binds a signature to a workload identity — a pipeline's OIDC token — and records it in a public transparency log, so there is no long-lived private key for anyone to steal. The verification step is the part people skip: an artefact signed but never verified provides no security at all. Enforce it at admission, so the cluster refuses images without valid provenance from your builders.
+
+The pragmatic sequence: generate SBOMs and scan them continuously against new advisories, sign and attest in the pipeline, then verify at deployment. The first step alone turns "we spent three days finding out" into a query.`,
+    keyPoints: [
+      'An SBOM inventories components; provenance proves which pipeline and commit produced the artefact.',
+      'SLSA build levels grade provenance from absent to signed by a hardened builder.',
+      'Sigstore\'s keyless signing removes the long-lived key that used to be the weak point.',
+      'Signing without verification at admission buys nothing.',
+    ],
+    related: ['supply-chain-security', 'release-versioning', 'admission-control', 'containers'],
+  },
+  {
+    id: 'workload-identity',
+    title: 'Workload identity',
+    category: 'security',
+    short: 'Short-lived credentials issued to a proven workload, instead of a key in a config file.',
+    body: `Long-lived credentials are the most reliably exploited weakness in cloud estates. A static access key sits in an environment variable, a CI secret, a laptop and an old repository; it does not expire, it rarely gets rotated, and when it leaks — in a log line, a public repo, a compromised dependency — it works from anywhere in the world until someone notices.
+
+Workload identity removes the secret. The workload proves what it is using something it has by virtue of running where it runs: an instance metadata credential, a Kubernetes projected service account token, a pipeline's OIDC token. The cloud provider validates that proof and returns credentials that expire in minutes to hours, rotated automatically by the SDK. There is nothing durable to steal. This is what an IAM role attached to an instance, an Azure managed identity, a GCP service account attached to a workload, and EKS Pod Identity or IRSA all implement.
+
+Federation extends the same model across boundaries, and is the fix for the most commonly leaked secret in existence: the cloud key stored in a CI system. GitHub Actions, GitLab and others can present an OIDC token describing the repository, the branch and the workflow; the cloud provider trusts that issuer and exchanges it for short-lived credentials. The trust policy is where the security lives, and it is where mistakes are made — a policy trusting an issuer without constraining the repository and branch lets anyone on that platform assume your role.
+
+Two practices make it hold up. Scope the identity narrowly, one per workload rather than a shared role that accumulates every permission any workload ever needed. And add conditions where the workload's position allows it: source VPC or IP range for something inside your network, a required tag, an expected audience. A short-lived credential that only works from inside your network is close to useless to an attacker who exfiltrates it.
+
+Where a long-lived credential genuinely cannot be avoided — a third-party SaaS integration, legacy software — put it in a secret manager with automatic rotation and audited access, and treat every one of them as a tracked exception rather than a normal state of affairs.`,
+    keyPoints: [
+      'Workloads prove identity by where they run; credentials expire in minutes.',
+      'OIDC federation replaces stored cloud keys in CI, which are the most leaked secret there is.',
+      'The trust policy must constrain the subject claim — repository plus branch, tag or environment — not only the issuer.',
+      'Where the workload sits inside your network, conditions make a stolen credential unusable from outside.',
+    ],
+    related: ['least-privilege', 'credential-rotation', 'secrets-management', 'ci-cd'],
+  },
+  {
+    id: 'mtls',
+    title: 'Mutual TLS',
+    category: 'security',
+    short: 'Both ends prove who they are, so the network stops being the thing you trust.',
+    body: `Ordinary TLS authenticates the server: the client verifies a certificate and knows it is talking to the right host. The server has no idea who the client is beyond whatever token is in the request. Mutual TLS adds the other direction — the client presents a certificate too, and the server validates it. The result is a connection where both ends have a cryptographically verified identity.
+
+This is the mechanism that makes zero-trust networking concrete inside an environment. Instead of "anything in this subnet may call the payments service", the rule becomes "the checkout workload's identity may call the payments service", and it holds regardless of where the caller sits on the network. An attacker with a foothold on a neighbouring host has network reach but no identity, and network reach alone stops being sufficient.
+
+The reason it is not universal is certificate lifecycle. Every workload needs a certificate, and one that is rotated frequently enough to limit the value of theft — often hours rather than months. Doing that by hand is unmanageable, which is precisely why service meshes and workload identity systems — SPIFFE, and implementations of it such as SPIRE — exist: they issue, distribute and rotate short-lived certificates automatically, keyed to the workload's identity, with no human in the path.
+
+Know where the authentication actually terminates. mTLS between load balancer and backend proves the load balancer's identity, not the original client's; if you need the caller's identity end to end, the connection must not be terminated in between, or the identity must be carried forward explicitly and trusted accordingly. Client certificates for external partners work but come with the operational burden of distributing and revoking them.
+
+And remember what it is not. mTLS authenticates and encrypts the channel; it does not authorise. The certificate says who is calling, and something still has to decide what that identity may do — which is why mesh authorisation policies, or plain checks in the service, remain necessary.`,
+    keyPoints: [
+      'Both ends present certificates, so identity replaces network position as the basis of trust.',
+      'Short-lived automatically rotated certificates are what make it operable at scale.',
+      'A terminating proxy authenticates itself, not the original client.',
+      'Authentication is not authorisation — something must still decide what the identity may do.',
+    ],
+    related: ['zero-trust', 'service-mesh', 'certificate-lifecycle', 'pki'],
+  },
+  {
+    id: 'audit-logging',
+    title: 'Audit logging',
+    category: 'security',
+    short: 'The record of who did what to the control plane, kept where they cannot edit it.',
+    body: `Audit logs are distinct from application logs. They record actions against the control plane — who called which API, on which resource, from where, and whether it was allowed. CloudTrail, Azure activity and diagnostic logs, GCP cloud audit logs, and the Kubernetes API server audit log are the ones that matter, and they are the evidence base for every investigation into a compromise or a mysterious change.
+
+Most providers record control-plane actions by default but keep them only briefly — ninety days of CloudTrail event history per region, ninety days of Azure activity log, and GCP admin activity logs that cannot be turned off at all. Durable, aggregated, tamper-resistant retention is the part you configure: a trail, a diagnostic setting, a log sink. Data-plane events are off everywhere until you enable them, and the Kubernetes API server logs nothing until it is given an audit policy. Configure all of this before you need it, in every region and every account, including the ones nobody uses — an unused region is exactly where an attacker prefers to mine cryptocurrency or stage exfiltration. An organisation-level trail delivering to a dedicated account is the standard shape, and it also solves the aggregation problem for new accounts automatically.
+
+The critical property is that the logs must survive the compromise they document. If the identity that can act in an account can also delete that account's audit trail, your evidence disappears in the first minutes of a competent attack — deleting logs is standard practice for anyone who knows what they are doing. Deliver to a separate account, make the destination append-only with object lock and a retention period, and alert specifically on attempts to stop logging, change retention, or delete the trail.
+
+Retention needs deliberate numbers. Median dwell time is now around a fortnight, but the cases that most need a long record are the slow ones — espionage intrusions and planted insiders run to a median of about four months, and a breach you learn about from a third party has typically been running for a month. Retention shorter than that means the initial access is not in the record at all. Regulatory requirements often set a floor of a year or more. The workable pattern is short-term hot storage for querying and long-term compressed archive for the rest.
+
+Volume and cost need equal deliberation. Data-plane events — every object read from storage — can be enormous, so enable them selectively on the buckets that hold sensitive data rather than universally. And decide what you actually alert on: root account use, changes to identity policies, disabled logging, new access keys, and permission changes on your most sensitive resources are the small set worth waking someone for.`,
+    keyPoints: [
+      'Audit logs record control-plane actions — the evidence base for any investigation.',
+      'Control-plane logs exist by default but expire in about ninety days; durable retention is what you configure.',
+      'Deliver to a separate, append-only destination the workload identity cannot erase.',
+      'Alert on the few actions that matter: disabled logging, identity changes, root use.',
+    ],
+    related: ['log-management', 'landing-zones', 'incident-response', 'compliance'],
+  },
+  {
+    id: 'threat-modelling',
+    title: 'Threat modelling',
+    category: 'security',
+    short: 'Four questions, asked while the design is still cheap to change.',
+    body: `Threat modelling is a structured conversation about a design, and it is most valuable before anything is built. The framing that has survived is four questions: what are we working on, what can go wrong, what are we going to do about it, and did we do a good enough job?
+
+Start with a diagram of the system with trust boundaries drawn on it — the lines where data crosses from something you control to something you do not, or from one privilege level to another. The internet to your load balancer, your application to a third-party API, a tenant's data to a shared cache, a browser to your API. Threats cluster on boundaries, which is why drawing them is most of the exercise.
+
+STRIDE is the usual prompt list for "what can go wrong", applied per element and per flow: spoofing an identity, tampering with data, repudiating an action, information disclosure, denial of service, elevation of privilege. It is a checklist rather than a theory, and its value is that it makes the group consider categories they would otherwise skip — repudiation and elevation of privilege are the ones teams routinely forget.
+
+Rank by realistic impact, not by novelty. An exposed storage bucket and a leaked long-lived key are more likely to end your week than an exotic cryptographic weakness. Each accepted risk should be recorded with a named owner, because "we discussed it and decided it was fine" is a legitimate outcome only if it is written down.
+
+Keep it proportional. A one-hour session on a whiteboard when a design is proposed, repeated when the design changes materially, delivers most of the value; a formal process nobody has time for delivers none. Trigger it on the things that deserve it: a new external interface, a new data classification, a new trust boundary, or a change to authentication or authorisation.`,
+    keyPoints: [
+      'Four questions: what are we working on, what can go wrong, what will we do, did we do enough.',
+      'Draw trust boundaries first — threats cluster where data changes hands.',
+      'STRIDE is a prompt list; repudiation and privilege escalation are the forgotten ones.',
+      'Record accepted risks with an owner, and keep sessions short enough to actually happen.',
+    ],
+    related: ['trust-boundary', 'defence-in-depth', 'owasp-top-10', 'blast-radius'],
+  },
+  {
+    id: 'container-security',
+    title: 'Container security',
+    category: 'security',
+    short: 'A container is a process with a fence around it. How good the fence is depends on how you built it.',
+    body: `Containers isolate through kernel features — namespaces, cgroups, capabilities, seccomp — not through virtualisation. The kernel is shared, so a kernel vulnerability reachable from inside a container is a path out of it. That single fact explains most container security practice: reduce what is inside the image, reduce what the container may do, and watch what it does at runtime.
+
+Build small. Every package in the image is attack surface and future vulnerability reports, and most images contain a full distribution to run one binary. Distroless or minimal base images remove the shell and package manager, which removes the attacker's tooling along with them. Use multi-stage builds so compilers and build dependencies never reach the final image, pin base images by digest, and rebuild regularly — an image built six months ago has six months of unpatched base layers regardless of how good your application code is.
+
+Then constrain the runtime, and the defaults are the wrong way round. Run as a non-root user with a read-only root filesystem, drop all Linux capabilities and add back only what is genuinely needed, set allowPrivilegeEscalation to false, and apply a seccomp profile — RuntimeDefault is the sensible baseline, blocking the forty-odd syscalls of three hundred-plus that workloads almost never need and attackers repeatedly do. Never run privileged containers for convenience; a privileged container is effectively root on the node. Do not mount the container runtime's socket — Docker's, containerd's, CRI-O's — into a container, which is root on the node by another route.
+
+Scan continuously, not once. A vulnerability discovered today applies to the image you built last month and are still running, so scanning must run against the registry and against what is deployed, not only in the pipeline. Give the results a policy — which severities block a deploy, and what the timeline is for what is already running — or the scanner becomes a dashboard nobody reads.
+
+Where the workload is genuinely untrusted, accept that namespaces are not a strong enough boundary and use a stronger one: a sandboxed runtime such as gVisor or Kata, a separate node pool, or separate infrastructure.`,
+    keyPoints: [
+      'Containers share the kernel; a kernel exploit crosses the boundary.',
+      'Minimal images remove both vulnerabilities and the attacker\'s tooling.',
+      'Non-root, read-only filesystem, dropped capabilities, seccomp — the defaults are too permissive.',
+      'Scan the registry and running workloads continuously, with a policy attached.',
+    ],
+    related: ['containers', 'sbom-and-provenance', 'admission-control', 'least-privilege'],
   },
 ]

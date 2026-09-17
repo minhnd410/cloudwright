@@ -25,3 +25,6 @@ dist-ssr
 
 # Build output
 dist-mcp
+
+# Local index built by the codebase-memory MCP server
+.codebase-memory

@@ -12,7 +12,7 @@ The trap is counting replicas without counting failure domains. Three Pods on on
 
 Redundancy also needs a mechanism to use it. Health checks that remove a sick instance, a load balancer that stops routing to it, an autoscaler that replaces it. Without those, a second instance is a second thing to be confused by during an incident rather than a second thing serving traffic.
 
-And be honest about what is redundant. A stateless web tier is easy. A relational primary is not — you get a standby with a failover measured in tens of seconds, not a second active copy. Knowing which of your components can actually be redundant is most of an availability design.`,
+And be honest about what is redundant. A stateless web tier is easy. A relational primary is not — you get a standby whose failover takes somewhere between thirty seconds and two minutes, not a second active copy. Knowing which of your components can actually be redundant is most of an availability design.`,
     keyPoints: [
       'One to two removes the single point of failure; everything after is headroom.',
       'Count failure domains, not replica counts.',
@@ -77,7 +77,7 @@ Active-passive with warm standby: a second region runs a scaled-down copy with d
 
 Active-active read, single write region: reads are served locally everywhere, writes route to one region. Excellent read latency worldwide, no write conflicts, and losing the write region is still a real failover.
 
-Active-active everything: writes accepted in every region, with conflict resolution. DynamoDB global tables and Cosmos DB multi-region writes make this available as a feature. Last-writer-wins silently discards one of two concurrent updates to the same item — you must design for that, not discover it.
+Active-active everything: writes accepted in every region, with conflict resolution. DynamoDB global tables and Cosmos DB multi-region writes make this available as a feature. The default is last-writer-wins, which silently discards one of two concurrent updates to the same item — you must design for that, not discover it. DynamoDB's multi-region strong consistency mode trades write latency and a shorter list of supported regions for rejecting the conflicting write instead of losing it.
 
 The traffic layer matters as much as the data layer. DNS failover depends on TTLs and is slow and partial. An anycast global load balancer with health checks moves traffic in seconds with no client involvement, which is why GCP's global load balancer and Azure Front Door are structural advantages for this pattern.
 
@@ -88,7 +88,7 @@ The requirement to be honest about: a multi-region setup you have never failed o
       'Anycast load balancing beats DNS failover by orders of magnitude in speed.',
       'An untested failover is not a capability.',
     ],
-    related: ['availability-zones', 'anycast', 'cap-theorem', 'rpo-rto'],
+    related: ['availability-zones', 'anycast', 'cap-theorem', 'rpo-rto', 'global-traffic-management', 'static-stability'],
   },
   {
     id: 'rpo-rto',
@@ -97,7 +97,7 @@ The requirement to be honest about: a multi-region setup you have never failed o
     short: 'How much data you can lose, and how long you can be down. Decide both numbers first.',
     body: `Recovery Point Objective is how much data you can afford to lose, measured in time. Nightly backups mean an RPO of up to 24 hours. Continuous replication means an RPO of seconds. Synchronous replication means zero.
 
-Recovery Time Objective is how long you can be down. Restoring a large database from a snapshot might take hours. A standby that fails over automatically takes under a minute.
+Recovery Time Objective is how long you can be down. Restoring a large database from a snapshot might take hours. A standby that fails over automatically takes a minute or two — AWS documents 60 to 120 seconds for a standard RDS Multi-AZ instance, and under 35 seconds for the three-node cluster variant.
 
 These are business decisions dressed as technical ones, and they have to be stated before the architecture, because they determine it. An RPO of zero requires synchronous replication and therefore constrains your geography. An RTO of minutes requires a warm standby and therefore doubles your cost.
 
@@ -110,7 +110,7 @@ Test restores on a schedule and measure the actual elapsed time. The number is a
       'Restores produce new endpoints; updating references is part of recovery.',
       'An untested backup is folklore. Measure a real restore.',
     ],
-    related: ['data-durability', 'multi-region', 'incident-response', 'ransomware-resilience'],
+    related: ['data-durability', 'multi-region', 'incident-response', 'ransomware-resilience', 'disaster-recovery'],
   },
   {
     id: 'health-checks',
@@ -134,7 +134,7 @@ And on the load balancer side: set the health check type to application-level, n
       'Startup probes handle slow boots without weakening liveness.',
       'Host-level health checks miss every application-level failure.',
     ],
-    related: ['probes', 'load-balancing', 'self-healing', 'rolling-updates'],
+    related: ['probes', 'load-balancing', 'self-healing', 'rolling-updates', 'static-stability'],
   },
   {
     id: 'self-healing',
@@ -156,7 +156,7 @@ The design instinct: make every component replaceable, then make replacement aut
       'Kubernetes controllers are continuous reconciliation, not one-shot commands.',
       'Automatic rollback covers the failures self-healing cannot: bad releases.',
     ],
-    related: ['health-checks', 'autoscaling', 'control-loop', 'deployment-strategies'],
+    related: ['health-checks', 'autoscaling', 'control-loop', 'deployment-strategies', 'toil'],
   },
   {
     id: 'circuit-breaker',
@@ -178,7 +178,7 @@ The mental model is a fuse. It is not there to prevent the fault; it is there to
       'Worth far more with a fallback than without one.',
       'Pair with timeouts and per-dependency pools.',
     ],
-    related: ['timeouts-retries', 'backpressure', 'availability-math', 'thundering-herd'],
+    related: ['timeouts-retries', 'backpressure', 'availability-math', 'thundering-herd', 'bulkheads', 'graceful-degradation'],
   },
   {
     id: 'timeouts-retries',
@@ -191,7 +191,7 @@ Set the timeout shorter than your own latency budget. If you promise 200ms and y
 
 Retries help with transient failures and hurt with sustained ones. Three rules make them safe. Exponential backoff with jitter, so a thousand clients do not retry in unison. A hard cap on attempts, usually two or three. And only retry idempotent operations, or use an idempotency key — retrying a payment because the response was lost is exactly how a customer gets charged twice.
 
-The compounding trap is worth drawing out: if each of three layers retries three times, one user request becomes twenty-seven calls to the bottom service. Retry at one layer, usually the outermost one that can make a sensible decision.
+The compounding trap is worth drawing out: if each of three layers makes three attempts, one user request becomes twenty-seven calls to the bottom service. Retry at one layer, usually the outermost one that can make a sensible decision.
 
 And use a deadline that propagates. If the user has already waited 190ms of a 200ms budget, the next call should be given 10ms, not a fresh 5 seconds.`,
     keyPoints: [
@@ -200,7 +200,7 @@ And use a deadline that propagates. If the user has already waited 190ms of a 20
       'Retries at multiple layers multiply; retry at one.',
       'Propagate a deadline rather than restarting the clock at each hop.',
     ],
-    related: ['circuit-breaker', 'idempotency', 'thundering-herd', 'latency-budget'],
+    related: ['circuit-breaker', 'idempotency', 'thundering-herd', 'latency-budget', 'load-shedding'],
   },
   {
     id: 'slo-sli',
@@ -214,14 +214,14 @@ An SLO is a target for that indicator over a window — 99.9% of requests succee
 
 The error budget is what makes this operationally useful. 99.9% over 30 days permits about 43 minutes of failure. That budget is a resource you can spend: on risky deploys, on migrations, on experiments. Budget remaining means you can move fast. Budget exhausted means you stop shipping features and fix reliability. It converts an argument about priorities into a number both sides already agreed to.
 
-Alerting follows from it. Alert on burn rate rather than on thresholds: consuming the budget 14 times faster than sustainable for an hour is a page; 1.5 times faster over a day is a ticket. This produces far fewer, far more meaningful alerts than "CPU above 80%" ever will.`,
+Alerting follows from it. Alert on burn rate rather than on thresholds: consuming the budget 14.4 times faster than sustainable for an hour — 2% of a month's budget gone — is a page; burning at the budgeted rate for three days, which is 10% of the budget, is a ticket. This produces far fewer, far more meaningful alerts than "CPU above 80%" ever will.`,
     keyPoints: [
       'SLIs measure user experience, not machine state.',
       'The error budget is the inverse of the SLO, and it is a resource to spend.',
       'Budget remaining governs whether you ship or fix.',
       'Alert on burn rate, not on static thresholds.',
     ],
-    related: ['error-budgets', 'alerting', 'observability', 'availability-math'],
+    related: ['error-budgets', 'alerting', 'observability', 'availability-math', 'toil'],
   },
   {
     id: 'error-budgets',
@@ -234,7 +234,7 @@ Having budget left means you can take risks: ship the ambitious change, run the 
 
 The policy is what gives it force, and it has to be agreed in advance, in writing, by both engineering and product. "When the budget is exhausted, feature work pauses until we are back within the objective." Agreed beforehand it is a rule; invented during an incident it is an argument.
 
-Burn-rate alerting is the operational consequence. Fast burn — 14 times the sustainable rate for an hour, consuming 2% of a monthly budget — pages someone. Slow burn — 1.5 times over a day — opens a ticket. Two alerts replace a dashboard full of thresholds, and both of them mean something.`,
+Burn-rate alerting is the operational consequence. Fast burn — 14.4 times the sustainable rate for an hour, consuming 2% of a monthly budget — pages someone. A slower burn of six times the rate over six hours, another 5% of the budget, also pages. Slow burn — the budgeted rate sustained over three days, 10% of the budget — opens a ticket. Two alerts replace a dashboard full of thresholds, and both of them mean something.`,
     keyPoints: [
       'Unspent budget means you are shipping too slowly.',
       'The policy must be agreed before you need it.',
@@ -263,7 +263,7 @@ The metric worth tracking is not incident count — it is how long they last, an
       'Check recent changes first; they usually are the cause.',
       'Blameless postmortems examine systems and context, not people.',
     ],
-    related: ['observability', 'alerting', 'rpo-rto', 'dora-metrics'],
+    related: ['observability', 'alerting', 'rpo-rto', 'dora-metrics', 'postmortems', 'on-call'],
   },
   {
     id: 'rolling-updates',
@@ -307,28 +307,226 @@ Whatever you choose, automatic rollback on alarm is the highest-value setting, a
       'Feature flags separate deploying code from releasing behaviour.',
       'Automatic rollback on alarm cuts recovery time more than any other setting.',
     ],
-    related: ['rolling-updates', 'ci-cd', 'dora-metrics', 'self-healing'],
+    related: ['rolling-updates', 'ci-cd', 'dora-metrics', 'self-healing', 'feature-flags'],
   },
   {
     id: 'dora-metrics',
-    title: 'The four DORA metrics',
+    title: 'The DORA metrics',
     category: 'reliability',
     short: 'Speed and stability move together, which is the counterintuitive finding.',
-    body: `Years of research across thousands of organisations landed on four measures that predict software delivery performance: deployment frequency, lead time for change, change failure rate, and time to restore service.
+    body: `Years of research across thousands of organisations landed on a small set of measures that predict software delivery performance. The original four are the ones most people know: deployment frequency, change lead time (commit to running in production), change fail rate, and time to restore service. That last one was renamed in 2023 to failed deployment recovery time, narrowing it to recovery from a deployment that caused the impairment rather than from any outage at all. DORA has since added a fifth — deployment rework rate, the share of deployments that are unplanned and happen because of a production incident — and groups them as throughput (frequency, lead time, recovery time) and instability (change fail rate, rework rate), alongside reliability as a broader quality of the service.
 
-The counterintuitive result is that speed and stability are positively correlated, not traded against each other. Teams that deploy more often have *lower* change failure rates and recover faster. The mechanism is not mysterious: frequent deploys are necessarily small, small changes are easier to review, to reason about and to revert, and a team that deploys constantly has a well-exercised deployment path.
+The counterintuitive result is that speed and stability are positively correlated, not traded against each other. Teams that deploy more often tend to have *lower* change failure rates and recover faster — a relationship DORA has qualified since 2024, when change fail rate proved a statistical outlier and recent reports found AI-accelerated throughput costing stability wherever testing and review were not already strong. The mechanism is not mysterious: frequent deploys are necessarily small, small changes are easier to review, to reason about and to revert, and a team that deploys constantly has a well-exercised deployment path.
 
 The implication is that "we deploy rarely because we are careful" usually produces the opposite of care. Large, infrequent releases bundle many changes, so when something breaks, identifying which change did it is an investigation rather than a glance.
 
-Time to restore is the one worth optimising first, because it is the one users actually feel and because it is largely a function of tooling you control: automatic rollback, feature flags, good dashboards, a practised runbook.
+Recovery time is the one worth optimising first, because it is the one users actually feel and because it is largely a function of tooling you control: automatic rollback, feature flags, good dashboards, a practised runbook. The addition of rework rate reflects the same instinct from the other direction — a deployment that "succeeded" and then required three follow-up fixes was not really a success, and only counting outright failures hid that.
 
 Use these to observe trends, not to compare teams — the numbers mean different things in different contexts, and an incentive to improve a measured number tends to improve the number rather than the thing.`,
     keyPoints: [
-      'Deployment frequency, lead time, change failure rate, time to restore.',
+      'Deployment frequency, change lead time, failed deployment recovery time; change fail rate and rework rate.',
       'Speed and stability rise together; small changes are the mechanism.',
-      'Optimise time to restore first — it is what users feel.',
+      'Optimise recovery time first — it is what users feel.',
       'Trends over time, not comparisons between teams.',
     ],
     related: ['ci-cd', 'deployment-strategies', 'incident-response', 'error-budgets'],
+  },
+  {
+    id: 'cell-based-architecture',
+    title: 'Cell-based architecture',
+    category: 'reliability',
+    short: 'Run many complete copies of the system and give each customer only one of them.',
+    body: `Redundancy within one system protects against a component failing. It does nothing about the failures that take the whole system at once: a poison message every replica chokes on, a configuration change applied everywhere, a database that is slow for everyone, a bug reached by one customer's traffic pattern. For those, the only real control is to have more than one system.
+
+A cell is a complete, independent instance of the stack — its own compute, its own data store, its own capacity — serving a defined subset of customers. A thin routing layer maps each customer to a cell. Cells do not share state and do not call each other, which is the property that makes the isolation real. A failure inside a cell affects that cell's customers and nobody else, so a total failure becomes a partial one: with eight cells, the worst case is roughly an eighth of users rather than all of them.
+
+Three design rules carry most of the benefit. Keep the router thin and boring — it is now shared by everyone, so it must be simpler than what it protects, and ideally statically stable, continuing to route from cached mappings when its control plane is unavailable. Size cells small enough to stay well inside service quotas and to be load-tested end to end, and add cells rather than growing them. And deploy in waves: one cell, watch, then a few, then the rest. Cells turn a bad deploy from an outage into a contained event, but only if the deployment respects the boundary.
+
+The costs are real. Per-cell fixed overhead multiplies, cross-cell operations become awkward or impossible, and anything that must be globally consistent — a unique username, an aggregate report — needs somewhere outside the cells to live, which becomes the shared component you were trying to avoid. Migrating a customer between cells is a project in its own right.
+
+It is the pattern behind the largest cloud services, and it is unnecessary for most systems. The threshold is when the difference between "all users affected" and "5% of users affected" is worth several times the operational complexity.`,
+    keyPoints: [
+      'A cell is an independent full stack serving a subset of customers; cells share nothing.',
+      'Correlated failures — bad config, poison messages, a bug — are what cells contain.',
+      'The router must be simpler than what it protects, and keep working without its control plane.',
+      'Deploy in waves across cells, and expect global operations to become hard.',
+    ],
+    related: ['shuffle-sharding', 'blast-radius', 'static-stability', 'multi-tenancy'],
+  },
+  {
+    id: 'shuffle-sharding',
+    title: 'Shuffle sharding',
+    category: 'reliability',
+    short: 'Give each customer a random pair of workers, and one bad customer stops taking everyone down.',
+    body: `Divide eight workers into four ordinary shards of two, and a customer whose traffic poisons its shard takes out both its workers — every other customer on that shard goes down with it. One in four of your customers is affected, and which ones is fixed forever.
+
+Shuffle sharding assigns each customer a random combination of workers instead of a fixed block. With eight workers and two per customer there are 28 possible pairs, so only about one customer in 28 shares both of your workers — the scope of impact falls from a quarter of your customers to a twenty-eighth. When one customer is destructive, the customers who overlap lose one of their two workers and, if the client retries on the other, keep working. The damage falls from "everyone in my shard is down" to "some customers lost one of two endpoints".
+
+The combinatorics are the whole trick, and they scale sharply: the probability that another customer shares your entire set falls as the pool grows and as the set size increases. A hundred nodes with five per customer gives tens of millions of combinations, so complete overlap is rare enough to ignore. Relative to ordinary sharding the arrangement usually costs nothing extra in capacity — the same workers, assigned differently.
+
+Two conditions must hold or the isolation is illusory. Clients must retry elsewhere when one endpoint misbehaves, because the benefit is entirely in having a surviving alternative. And the workers must genuinely not share the thing that fails — a shared database or a shared control plane underneath makes the shuffle cosmetic.
+
+The natural home for this is any layer where one tenant can consume a disproportionate share: request routers, API front ends, queue consumers, connection handling. AWS uses it in Route 53 and elsewhere for exactly that reason. It composes well with cells — shuffle within a cell, cells for the bigger blast radius — and, like cells, its value is proportional to how much damage a single tenant can do.`,
+    keyPoints: [
+      'Random per-customer combinations make complete overlap between customers rare.',
+      'A destructive tenant costs others one endpoint rather than their whole shard.',
+      'It only works if clients retry on an alternative endpoint.',
+      'Shared dependencies underneath make the isolation cosmetic.',
+    ],
+    related: ['cell-based-architecture', 'blast-radius', 'rate-limiting', 'multi-tenancy'],
+  },
+  {
+    id: 'load-shedding',
+    title: 'Load shedding',
+    category: 'reliability',
+    short: 'Past capacity, refusing some requests quickly serves more users than accepting all of them slowly.',
+    body: `When demand exceeds capacity, a system that accepts everything degrades for everyone: queues grow, latency climbs past the point where clients time out, and work is done for requests nobody is waiting for any more. Throughput of *useful* work collapses while the machines stay busy. This is congestion collapse, and it is the failure mode behind a surprising share of total outages.
+
+Load shedding is the deliberate alternative: above a threshold, reject excess requests immediately and cheaply, so the requests you do accept are served within their deadline. A fast 429 or 503 is a far better outcome than a timeout — it is cheap to produce, it tells the client what to do, and it leaves capacity intact for everyone else.
+
+What to shed is a product decision more than a technical one. Shed by priority: health checks and payments before anything, browsing before recommendations, background and batch work first. Shed by cost: an expensive report can wait while cheap reads continue. Shed by tenant, so one customer's surge does not consume the shared pool. Having those priorities declared in advance — a class on every request — is what makes shedding possible in the moment.
+
+Implement it on the right signal. CPU is a lagging indicator; queue depth and queue wait time lead it. A common and effective policy is to drop any request that has already waited longer than its deadline, since completing it serves nobody. Adaptive approaches — increasing the drop rate while latency stays above target — handle varying request costs better than a fixed request-per-second cap.
+
+The client side matters as much. A rejection that triggers immediate retries from thousands of clients is not shedding, it is amplification. Retry with exponential backoff and jitter, honour Retry-After, and use a retry budget so a struggling dependency is not hit with several times its normal load at its worst moment.`,
+    keyPoints: [
+      'Accepting everything past capacity destroys useful throughput; fast rejection preserves it.',
+      'Shed by priority, cost and tenant — decided in advance, not during the incident.',
+      'Queue wait time leads CPU; drop requests whose deadline has already passed.',
+      'Without client backoff and retry budgets, shedding becomes amplification.',
+    ],
+    related: ['backpressure', 'rate-limiting', 'timeouts-retries', 'queueing-theory'],
+  },
+  {
+    id: 'graceful-degradation',
+    title: 'Graceful degradation',
+    category: 'reliability',
+    short: 'Decide in advance which features you can lose, so losing them is not an outage.',
+    body: `Every hard dependency multiplies into your availability: if the checkout page cannot render without the recommendation service, then the recommendation service's availability is now part of yours. Graceful degradation is the discipline of converting hard dependencies into soft ones, so that a failure downstream produces a smaller page rather than an error page.
+
+It starts as a product conversation. For each feature, what is the acceptable behaviour when its dependency is unavailable — hide it, show stale data, show a cached default, queue the action for later, or fail the whole request? A store can sell without personalisation, without reviews, and without the loyalty-points balance. It cannot sell without the payment provider. Writing that table down is most of the work, and it is not an engineering decision to make alone.
+
+The mechanisms are familiar. A timeout short enough that the optional call cannot dominate the response. A circuit breaker that stops calling a dependency that is failing and returns the fallback immediately, which also gives the struggling dependency room to recover. A cache that can serve stale entries when the origin is unavailable — stale data is usually better than no page. And a feature flag that lets a human turn off an expensive path during an incident.
+
+Two specific degradations are worth designing deliberately, because they come up repeatedly. Read-only mode: when the primary database is unavailable or failing over, serving reads from a replica keeps most of a site working. And write-behind: accepting a request into a queue and confirming it, rather than requiring the downstream system to be available synchronously.
+
+Test the degraded path, or you do not have one. Fallbacks that are never exercised are typically broken — the stale cache empty, the fallback path untested against current data shapes, the timeout longer than the client's own. Game days and chaos experiments exist largely to find exactly this.`,
+    keyPoints: [
+      'Hard dependencies multiply into your availability; soft ones do not.',
+      'Decide per feature, with the product, what happens when its dependency is gone.',
+      'Timeouts, circuit breakers, stale caches and kill switches are the mechanisms.',
+      'Untested fallback paths are usually broken paths.',
+    ],
+    related: ['circuit-breaker', 'timeouts-retries', 'feature-flags', 'availability-math'],
+  },
+  {
+    id: 'bulkheads',
+    title: 'Bulkheads',
+    category: 'reliability',
+    short: 'Separate resource pools, so one saturated dependency cannot consume the whole service.',
+    body: `A ship is divided into watertight compartments so that a hole floods one of them rather than the hull. The software version is the same idea applied to whatever is finite in your process: threads, connections, memory, concurrency slots.
+
+The classic failure it prevents: a service calls a slow dependency, each call holds a thread while it waits, and within a minute every thread in the pool is parked on that one dependency. Requests that have nothing to do with it now fail too, because there is nothing left to serve them. One slow downstream has become a total outage, and the parts of the system that were perfectly healthy are down for a reason that has nothing to do with them.
+
+A bulkhead bounds the damage by giving each dependency its own limited pool. Calls to the payment provider may use at most twenty concurrent slots; when those are exhausted, further payment calls fail fast while everything else continues. The important part is failing fast at the boundary rather than queueing behind it — an unbounded queue in front of a bulkhead recreates the problem it was meant to solve.
+
+Bulkheads exist at every scale, and the coarser ones are stronger. Separate connection pools per dependency inside a process. Separate thread pools or concurrency limits per endpoint class. Separate deployments for critical and non-critical paths, so a bug in the reporting endpoints cannot exhaust the machines serving checkout. Separate node pools, clusters, accounts or cells for the coarsest isolation of all.
+
+The cost is utilisation: partitioned resources are less efficient than one shared pool, and the partition that sits idle cannot help the one that is saturated. That is the trade being made deliberately — some capacity in exchange for the guarantee that saturation stays local. Combine with a circuit breaker, which stops the calls entirely once a dependency is clearly unhealthy, and with timeouts short enough that a slot is never held for long.`,
+    keyPoints: [
+      'A shared thread or connection pool lets one slow dependency take down everything.',
+      'Give each dependency a bounded pool and fail fast when it is exhausted.',
+      'Coarser bulkheads — separate deployments, pools, accounts — isolate more strongly.',
+      'You pay in utilisation for the guarantee that saturation stays local.',
+    ],
+    related: ['circuit-breaker', 'timeouts-retries', 'connection-pooling', 'blast-radius'],
+  },
+  {
+    id: 'queueing-theory',
+    title: 'Why latency explodes near full',
+    category: 'reliability',
+    short: 'Queues grow non-linearly with utilisation. The last 20% of capacity costs far more than the first 80%.',
+    body: `A system at 50% utilisation and the same system at 90% do not differ by a factor of two in queueing delay — they differ by roughly a factor of nine. For a simple queue, waiting time scales with ρ/(1−ρ), where ρ is utilisation. At 50% the factor is 1; at 80% it is 4; at 90% it is 9; at 95% it is 19. This is why a service that looks comfortable at 70% CPU falls over at 90% with no warning in between, and why average utilisation is a misleading measure of headroom.
+
+Variability makes it worse, and real systems are highly variable. Arrivals are bursty rather than evenly spaced, and request costs differ by orders of magnitude — one expensive query among cheap ones delays everything behind it. Both push the knee of the curve to lower utilisation than the textbook figure, which is the practical justification for running at 60–70% rather than 85%.
+
+Little's Law is the other result worth carrying: the number of requests in the system equals the arrival rate multiplied by the average time in the system (L = λW). It holds for any stable system in steady state, whatever the arrival and service distributions, and answers questions people usually guess at. At 500 requests per second with an average of 200ms in-flight, you have 100 concurrent requests — so a thread pool of 50 is a bottleneck, and a pool of 2,000 is an invitation to queue enormously before failing.
+
+Two conclusions for design. Concurrency limits should be set from measured arrival rate and latency, not chosen because the number looked generous; too large a limit converts a capacity problem into a latency collapse. And the most effective latency fix is often reducing variability rather than adding capacity: separating expensive work onto its own path, capping request cost, or moving batch jobs away from interactive traffic.
+
+The operational reading: keep headroom, alert on queue depth and wait time rather than on utilisation alone, and treat 90% utilisation as full.`,
+    keyPoints: [
+      'Queueing delay scales as ρ/(1−ρ): 90% utilisation queues nine times as much as 50%.',
+      'Burstiness and uneven request cost move the knee lower — target 60–70%.',
+      'Little\'s Law (L = λW) sizes pools and connections from measured numbers.',
+      'Oversized concurrency limits turn saturation into collapse rather than rejection.',
+    ],
+    related: ['capacity-planning', 'load-shedding', 'backpressure', 'latency-budget'],
+  },
+  {
+    id: 'static-stability',
+    title: 'Static stability',
+    category: 'reliability',
+    short: 'Keep working with the state you already have, when the thing that gives you new state is down.',
+    body: `Control planes — the systems that create, configure and change things — are more complex than data planes, which merely serve traffic using the configuration they already have. They are therefore more likely to fail. Static stability is the property of a system that keeps doing its job correctly when its control plane is unavailable, using the last state it knew about.
+
+The canonical examples are worth memorising because they generalise. A load balancer that keeps sending traffic to its existing healthy targets when it cannot reach the health-check control plane, rather than failing closed and dropping everything. A service mesh proxy that keeps routing with cached configuration when the control plane is unreachable. Nodes that keep running their existing workloads when the cluster API is down. DNS resolvers serving expired-but-cached entries when the authoritative servers are unreachable, which is a deliberate choice to prefer stale answers over no answers.
+
+The pattern has a cost, and stating it plainly is the point: static stability means pre-provisioning. If losing a zone should not require launching instances — because the instance-launch API is exactly the thing likely to be busy during a large event — then the other zones must already be running enough capacity to absorb the load. You pay for idle capacity in exchange for a recovery path that does not depend on anything working at the worst moment.
+
+The failure this prevents is correlated and large. During a major provider event, everyone's autoscaling fires at once, everyone's failover tries to create resources at once, and the control plane APIs become the bottleneck. A design that needs to create something to recover is a design that recovers last, behind everyone else trying to do the same thing.
+
+The question to ask of any failover plan: what has to be *working* for this recovery to happen? Every answer is a dependency on the worst hour of the year, and each one is a candidate for being pre-provisioned instead.`,
+    keyPoints: [
+      'Data planes should keep serving on cached state when control planes fail.',
+      'Prefer stale configuration over no configuration; fail open where it is safe to.',
+      'Static stability means pre-provisioned capacity rather than recovery-time provisioning.',
+      'Ask what must be working for your failover to succeed — that is your real dependency list.',
+    ],
+    related: ['health-checks', 'multi-region', 'disaster-recovery', 'capacity-planning'],
+  },
+  {
+    id: 'disaster-recovery',
+    title: 'Disaster recovery',
+    category: 'reliability',
+    short: 'Four strategies, priced by how much downtime and data loss you can accept.',
+    body: `Disaster recovery is what you do when a whole environment is gone — a region, an account, a database destroyed by a bad migration or an attacker. It is distinct from high availability, which handles component failures automatically and invisibly, and the two solve different problems: an architecture can be beautifully multi-zone and still have no answer to "someone deleted the account".
+
+The strategies form a ladder, each trading cost for recovery time. Backup and restore: backups copied to another region, infrastructure recreated on demand. The cheapest, with recovery measured in hours, and entirely adequate for many internal systems. Pilot light: data continuously replicated and the core services defined but switched off; recovery in tens of minutes. Warm standby: a scaled-down but running copy taking no traffic, scaled up on failover; recovery in minutes. Active-active: full capacity in both places serving traffic, with the highest cost and the most complexity, and near-zero recovery time.
+
+Pick the rung from stated objectives rather than ambition. RTO is how long you can be down; RPO is how much data you can lose. Both are business decisions with a price attached, and the instinct to answer "zero" for both disappears once the cost of that answer is shown. Different systems in the same organisation legitimately sit on different rungs.
+
+The plan is worth exactly what its last test was worth. Untested recovery fails on the details: the runbook references a person who left, the backup contains the data but not the encryption key, a dependency is only in the primary region, DNS TTLs are long enough to make failover slow, nobody has permission to promote the replica, or the restore takes eleven hours because nobody measured it. Restoring a database from backup is the single most valuable thing to rehearse, on a schedule, with the time recorded.
+
+And keep the recovery path independent. Backups in the same account with the same credentials as production are not backups against ransomware or an account compromise — a separate account, with object lock or immutability and a retention policy, is what makes them survive an attacker with your permissions.`,
+    keyPoints: [
+      'Backup-and-restore, pilot light, warm standby, active-active: increasing cost, decreasing recovery time.',
+      'Choose the rung from stated RTO and RPO, per system, with the price visible.',
+      'An untested plan fails on details — rehearse restores and record how long they take.',
+      'Backups reachable with production credentials do not survive ransomware.',
+    ],
+    related: ['rpo-rto', 'multi-region', 'ransomware-resilience', 'chaos-engineering'],
+  },
+  {
+    id: 'consensus-and-quorum',
+    title: 'Consensus, quorum and split brain',
+    category: 'reliability',
+    short: 'Two nodes both believing they are the primary is worse than having no primary at all.',
+    body: `Any system with a single writer needs an answer to one question: when the current primary stops responding, who decides that it is dead and who takes over? Getting this wrong produces split brain — two nodes each accepting writes, each believing the other is gone — and the result is divergent data that cannot be merged automatically, which is a worse outcome than a few minutes of unavailability.
+
+The core difficulty is that a node cannot distinguish a peer that has crashed from a peer it cannot reach. The standard answer is quorum: decisions require a majority of an odd-numbered group, so at most one side of any network partition can have one. This is why etcd, ZooKeeper, Consul and their relatives are deployed in threes or fives — three tolerates one failure, five tolerates two — and why even-numbered clusters are a mistake, since four nodes tolerate exactly as many failures as three while failing more often.
+
+Consensus protocols (Raft, Paxos and their descendants) turn that into a usable primitive: a replicated log that all members agree on, with automatic leader election. They are the foundation under distributed databases, schedulers and the coordination services that everything else leans on. The practical consequence is that every write costs a round trip to a majority, which is why placing consensus members across regions is such an expensive decision.
+
+Where the quorum is stretched across zones, place members deliberately. Three zones with one member each tolerates a zone loss. Two zones cannot: whichever zone holds one member loses quorum when the other is lost. This is a common and painful discovery during a zone outage.
+
+Managed databases hide most of this, but not the consequences. A Multi-AZ failover has a real, non-zero recovery time — AWS documents 60 to 120 seconds for a standard RDS Multi-AZ instance, and under 35 seconds for the three-node Multi-AZ cluster — while the standby is promoted and the endpoint is repointed, and writes fail throughout. Applications need to survive that window with retries and a circuit breaker rather than treating it as an outage, and a fencing mechanism must ensure the demoted primary cannot accept a late write.`,
+    keyPoints: [
+      'A node cannot tell a crashed peer from an unreachable one; quorum resolves it.',
+      'Odd-sized groups of three or five; even sizes add cost without adding tolerance.',
+      'Spread quorum members across three zones, or a zone loss costs you the majority.',
+      'Failover costs a minute or two of write unavailability — applications must ride it out.',
+    ],
+    related: ['cap-theorem', 'eventual-consistency', 'availability-zones', 'read-replicas'],
   },
 ]

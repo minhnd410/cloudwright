@@ -19,6 +19,14 @@ export const IDENTITY_IN: Port = {
   id: 'identity', side: 'in', label: 'Identity & secrets', flows: ['identity', 'secret', 'key'], position: 'top',
 }
 
+/**
+ * Anything a pipeline can deploy to. Separate from the request path so a deploy
+ * edge is visibly a different kind of dependency from a user request.
+ */
+export const DEPLOY_IN: Port = {
+  id: 'deploy', side: 'in', label: 'Deployments', flows: ['deploy', 'image'], position: 'top',
+}
+
 /** Bundled ports for a typical application compute resource. */
 export function computePorts(opts: {
   accepts?: Flow[]
@@ -30,6 +38,7 @@ export function computePorts(opts: {
     inPort('in', 'Inbound requests', accepts),
     outPort('out', 'Outbound calls', calls),
     IDENTITY_IN,
+    DEPLOY_IN,
     TELEMETRY_OUT,
   ]
 }

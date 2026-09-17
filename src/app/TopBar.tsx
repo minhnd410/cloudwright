@@ -158,15 +158,23 @@ function FileMenu() {
     }
   }
 
+  const flash = (message: string, ms: number) => {
+    setNotice(message)
+    setTimeout(() => setNotice(null), ms)
+  }
+
   const copyShareLink = () => {
     const { name, nodes, edges } = useGame.getState()
     const url = `${window.location.origin}/build?d=${encodeShareLink(serialize(name, nodes, edges))}`
-    void navigator.clipboard?.writeText(url).then(
-      () => {
-        setNotice('Share link copied to the clipboard.')
-        setTimeout(() => setNotice(null), 3000)
-      },
-      () => setNotice('Could not access the clipboard.'),
+    // The Clipboard API is absent outside a secure context, which is what you
+    // get when the dev server is opened on a LAN address rather than localhost.
+    if (!navigator.clipboard) {
+      flash('Copying needs https or localhost. Use Export JSON instead.', 6000)
+      return
+    }
+    void navigator.clipboard.writeText(url).then(
+      () => flash('Share link copied to the clipboard.', 3000),
+      () => flash('Could not access the clipboard.', 6000),
     )
   }
 

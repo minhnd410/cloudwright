@@ -269,7 +269,7 @@ const deployment: ResourceDef = {
   ports: [
     inPort('in', 'Traffic from Service', ['http', 'grpc', 'tcp']),
     outPort('out', 'Outbound calls', ['http', 'grpc', 'sql', 'nosql', 'cache', 'queue', 'stream', 'object', 'search']),
-    inPort('config', 'Config & secrets', ['secret', 'identity', 'image'], { position: 'top' }),
+    inPort('config', 'Config, secrets & deploys', ['secret', 'identity', 'image', 'deploy'], { position: 'top' }),
     TELEMETRY_OUT,
   ],
   props: [

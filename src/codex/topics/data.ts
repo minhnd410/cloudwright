@@ -8,7 +8,7 @@ export const data: Concept[] = [
     short: 'The guarantee that a group of writes either all happen or none do.',
     body: `ACID is four promises a relational database makes. Atomicity: a transaction is all-or-nothing, so a transfer never debits one account without crediting the other. Consistency: constraints hold before and after. Isolation: concurrent transactions do not see each other's half-finished work. Durability: once committed, it survives a crash.
 
-Isolation is the one with nuance, because it comes in levels and the default is usually not the strictest. Read Committed — the common default — prevents reading uncommitted data but allows the same query in one transaction to return different results if another transaction commits in between. Serializable prevents every anomaly and costs throughput. Most applications run on the default and are fine; the ones that are not tend to discover it through a rare, hard-to-reproduce bug involving concurrent updates to the same row.
+Isolation is the one with nuance, because it comes in levels and the default is usually not the strictest. Read Committed — the default in PostgreSQL, Oracle and SQL Server — prevents reading uncommitted data but allows the same query in one transaction to return different results if another transaction commits in between. MySQL's InnoDB defaults one level stricter, to Repeatable Read, which is worth knowing before assuming isolation behaviour carries across engines. Serializable prevents every anomaly and costs throughput. Most applications run on the default and are fine; the ones that are not tend to discover it through a rare, hard-to-reproduce bug involving concurrent updates to the same row.
 
 The practical reason ACID still matters: it lets you express invariants in one place and trust them. Without transactions, "never let the balance go negative" has to be enforced by careful, correct application code at every call site, forever.
 
@@ -32,16 +32,16 @@ Replication is asynchronous, so a replica is always a little behind — usually 
 
 A replica is not a backup. It faithfully replicates a bad DELETE within milliseconds. Backups protect against mistakes; replicas protect against load and, if promoted, against losing the primary.
 
-Aurora and Cloud Spanner reduce the lag substantially by sharing a storage layer rather than shipping a log, which makes replicas much closer to current — but never identical.
+Aurora reduces the lag substantially: its replicas read the same cluster volume as the writer rather than replaying a shipped log, which keeps them much closer to current — but never identical. Spanner takes a different route entirely, committing every write through a Paxos quorum before acknowledging it, so any replica can serve a strongly consistent read and there is no lag to design around.
 
-And note that Multi-AZ standby is not a read replica. A standby serves no traffic; it exists purely to fail over to.`,
+And note that a Multi-AZ standby is not a read replica. In an RDS Multi-AZ DB instance deployment the single standby serves no traffic and exists purely to fail over to. The Multi-AZ DB cluster deployment is the exception worth knowing: it runs two standbys, and those do serve reads.`,
     keyPoints: [
       'Replicas scale reads, not writes.',
       'Replication lag makes read-after-write inconsistency user-visible.',
       'A replica is not a backup — it replicates your mistakes faithfully.',
-      'A Multi-AZ standby serves no traffic; it is for failover only.',
+      'A Multi-AZ standby serves no traffic; only the cluster variant\'s standbys serve reads.',
     ],
-    related: ['acid-transactions', 'eventual-consistency', 'rpo-rto', 'availability-zones'],
+    related: ['acid-transactions', 'eventual-consistency', 'rpo-rto', 'availability-zones', 'replication-lag'],
   },
   {
     id: 'nosql-modelling',
@@ -61,7 +61,7 @@ The decision that cannot be undone is the partition key. It determines how data 
       'The partition key is permanent — changing it means migrating.',
       'Unanticipated queries need a secondary index, or a rebuild.',
     ],
-    related: ['partition-keys', 'eventual-consistency', 'cap-theorem', 'acid-transactions'],
+    related: ['partition-keys', 'eventual-consistency', 'cap-theorem', 'acid-transactions', 'sharding'],
   },
   {
     id: 'partition-keys',
@@ -83,7 +83,7 @@ The same mechanic appears everywhere with different names — shards in Kinesis,
       'Tenant ids, timestamps and status fields are classic bad keys.',
       'Add a shard suffix or use a composite key to spread the load.',
     ],
-    related: ['nosql-modelling', 'event-streaming', 'capacity-planning'],
+    related: ['nosql-modelling', 'event-streaming', 'capacity-planning', 'sharding'],
   },
   {
     id: 'eventual-consistency',
@@ -105,7 +105,7 @@ The engineering habit: decide per read path, not per database. A single applicat
       'Session consistency gives you your own writes without the cost of strong.',
       'Choose consistency per read path, not once per database.',
     ],
-    related: ['cap-theorem', 'read-replicas', 'nosql-modelling', 'idempotency'],
+    related: ['cap-theorem', 'read-replicas', 'nosql-modelling', 'idempotency', 'replication-lag'],
   },
   {
     id: 'cap-theorem',
@@ -151,7 +151,7 @@ The general rules: a cache is not a database, so nothing that cannot be recomput
       'Know what your database load looks like at a 0% hit rate.',
       'Alarm on hit rate and evictions, not just CPU.',
     ],
-    related: ['cache-invalidation', 'thundering-herd', 'ttl-and-caching', 'cdn'],
+    related: ['cache-invalidation', 'thundering-herd', 'ttl-and-caching', 'cdn', 'query-performance'],
   },
   {
     id: 'cache-invalidation',
@@ -204,9 +204,9 @@ It is worth noticing how often an outage's *duration* is caused by the clients r
     short: 'Effectively infinite, addressed by key over HTTP, and the most common source of data leaks.',
     body: `Object storage holds opaque blobs in a flat namespace, addressed by key over HTTP. There is no capacity to provision, durability is extraordinary (eleven nines is the usual figure), and the cost per gigabyte is very low. It backs static sites, data lakes, backups, logs and media.
 
-The mental adjustment from filesystems: there are no real directories. A key containing slashes just looks like a path; listing a "folder" is a prefix scan. Objects are immutable — you replace them, you do not edit them in place — and overwrites are eventually consistent for listings even where reads are strongly consistent.
+The mental adjustment from filesystems: there are no real directories. A key containing slashes just looks like a path; listing a "folder" is a prefix scan. Objects are immutable — you replace them, you do not edit them in place — and since December 2020 S3 has been strongly consistent for reads and listings alike, so an object appears in a listing the moment the PUT that created it returns. Bucket-level configuration, such as enabling versioning, is still eventually consistent.
 
-Two operational realities. Storage is cheap and egress is not: moving data out to the internet typically costs several times more per gigabyte per month than storing it. And request charges matter for small-object workloads — millions of tiny reads can cost more than the storage itself.
+Two operational realities. Storage is cheap and egress is not: a gigabyte costs a fraction of a penny to keep for a month and several times that to send to the internet once. Data read out repeatedly costs far more to move than to hold, and the bill grows with traffic rather than with the dataset. And request charges matter for small-object workloads — millions of tiny reads can cost more than the storage itself.
 
 And the security reality: public buckets have been the single most common cause of accidental data exposure in cloud computing. The controls exist and they work — account-level public access blocks, uniform IAM-only access, serving public content through a CDN with signed origin access — but they have to be on before the data goes in, not after.`,
     keyPoints: [
@@ -215,14 +215,14 @@ And the security reality: public buckets have been the single most common cause 
       'Block public access at the account level, before anyone creates a bucket.',
       'Versioning plus a lifecycle rule is the recovery story.',
     ],
-    related: ['block-vs-object-storage', 'data-durability', 'ransomware-resilience', 'cost-optimisation'],
+    related: ['block-vs-object-storage', 'data-durability', 'ransomware-resilience', 'cost-optimisation', 'analytics-vs-transactions'],
   },
   {
     id: 'block-vs-object-storage',
     title: 'Block, file and object storage',
     category: 'data',
     short: 'A disk, a share, or an HTTP keyspace — three different things people call storage.',
-    body: `Block storage is a virtual disk attached to one machine. The operating system sees raw blocks and puts a filesystem on them. It is fast, low-latency, and exclusive: one volume, one instance, one availability zone. Databases and anything needing random access live here.
+    body: `Block storage is a virtual disk attached to one machine. The operating system sees raw blocks and puts a filesystem on them. It is fast, low-latency and normally exclusive: one volume, one instance, one availability zone. Provisioned IOPS volumes can attach to as many as sixteen instances in the same zone, but only a cluster-aware filesystem makes that safe, so treat it as a specialist option rather than as shared storage. Databases and anything needing random access live here.
 
 File storage is a shared filesystem several machines mount at once, over NFS or SMB. It gives you POSIX semantics and concurrent access, at higher latency than a local disk. Use it when multiple instances genuinely need the same mutable files.
 
@@ -270,7 +270,7 @@ These are provisioned, not assumed. On the older gp2 volume type, performance sc
 
 The symptom of exhausting them is distinctive and easily misread: application latency climbs, the database looks slow, and CPU is idle. The queue depth on the volume is high and everything is waiting on storage. People spend hours looking at query plans before checking disk metrics.
 
-Three things to remember. Databases are IOPS-hungry and log-heavy; put them on volumes sized for operations, not capacity. Burst credits on smaller volumes mean a benchmark can look excellent for ten minutes and then fall off a cliff. And a restored snapshot is lazily loaded from object storage, so a freshly restored volume is slow until fully hydrated — which matters when you are measuring recovery time.`,
+Three things to remember. Databases are IOPS-hungry and log-heavy; put them on volumes sized for operations, not capacity. Burst credits on smaller gp2 volumes mean a benchmark can look excellent for half an hour and then fall off a cliff. gp3 does not burst at all; it sustains what you provisioned indefinitely, which is the other reason to prefer it. And a restored snapshot is lazily loaded from object storage, so a freshly restored volume is slow until fully hydrated — which matters when you are measuring recovery time.`,
     keyPoints: [
       'IOPS for random access, throughput for sequential transfer.',
       'High latency with idle CPU usually means storage, not compute.',
@@ -284,7 +284,7 @@ Three things to remember. Databases are IOPS-hungry and log-heavy; put them on v
     title: 'Encryption at rest',
     category: 'data',
     short: 'Nearly free, nearly universal, and the value is in who holds the key.',
-    body: `Encryption at rest means the stored bytes are ciphertext. Every major provider does it by default now, at essentially no cost and no measurable performance impact. There is no reason to have it off.
+    body: `Encryption at rest means the stored bytes are ciphertext. Object storage is now encrypted whether you ask or not — S3 has applied encryption to every new object since January 2023 — but block storage and managed databases are not: EBS encryption by default is an account and region setting you have to switch on, and a managed database created without encryption usually stays unencrypted for its whole life. The cost is negligible and the performance impact is not measurable, so switch it on everywhere. There is no reason to have it off.
 
 The interesting question is key ownership. With provider-managed keys, the provider handles everything and you never think about it. With customer-managed keys you control a key in a key management service, and three things change: every use is logged, so you can audit who decrypted what; you can revoke access instantly, which makes all data encrypted under that key unreadable regardless of who holds it; and you become responsible for not destroying the key, because the data goes with it.
 
@@ -310,7 +310,7 @@ Encryption at rest does not protect against a compromised application, which is 
 
 What that buys you is control and evidence. Every operation is logged, so "who decrypted this, and when" is answerable. The key policy is an independent authorisation layer — separate from your ordinary IAM — so revoking it cuts access immediately and comprehensively.
 
-Operational cautions, each of which has caught people. The key policy, not IAM, is the root of authority on the key; locking yourself out of it is one of the few genuinely unrecoverable cloud mistakes. Key deletion is deliberately slow (a mandatory waiting period) for exactly that reason. Rotation is usually a free annual toggle and should simply be on. And KMS request charges can exceed storage costs for workloads with many small objects, which is why bucket-level key caching exists.
+Operational cautions, each of which has caught people. The key policy, not IAM, is the root of authority on the key; locking yourself out of it is one of the few genuinely unrecoverable cloud mistakes. Key deletion is deliberately slow (a mandatory waiting period) for exactly that reason. Rotation is a toggle rather than a project — AWS KMS rotates every 365 days by default, the period is configurable, and you can rotate on demand — but it is not free: the first and second rotation each add a dollar a month to the key, after which the charge stops. And KMS request charges can exceed storage costs for workloads with many small objects, which is why bucket-level key caching exists.
 
 The mental model: encryption keys are the highest-value credential in the system. Treat access to them the way you treat production database access.`,
     keyPoints: [
@@ -363,7 +363,7 @@ The metric that matters is consumer lag (iterator age): how far behind real time
       'Ordering holds within a partition, not globally.',
       'Consumer lag is the health metric for any stream.',
     ],
-    related: ['async-messaging', 'event-sourcing', 'partition-keys', 'event-driven'],
+    related: ['async-messaging', 'event-sourcing', 'partition-keys', 'event-driven', 'change-data-capture'],
   },
   {
     id: 'event-sourcing',
@@ -449,6 +449,138 @@ The mindset shift that makes this click: an overloaded system's job is not to se
       'Timeouts, bounded pools and circuit breakers are all backpressure mechanisms.',
       'Serving 80% well beats failing 100% slowly.',
     ],
-    related: ['rate-limiting', 'circuit-breaker', 'timeouts-retries', 'capacity-planning'],
+    related: ['rate-limiting', 'circuit-breaker', 'timeouts-retries', 'capacity-planning', 'load-shedding'],
+  },
+  {
+    id: 'schema-migrations',
+    title: 'Schema migrations',
+    category: 'data',
+    short: 'The database and the code deploy at different moments. Both versions must work in between.',
+    body: `A deploy is not atomic. During a rolling update, old and new application versions run simultaneously against one database, sometimes for minutes, and during a rollback the old version runs against a migrated schema. Any migration that assumes the schema and the code change at the same instant will break in that window.
+
+The technique that removes the problem is expand and contract. Expand: add the new column and start writing to both old and new while still reading the old. Migrate: backfill existing rows in batches, then switch reads to the new column. Contract: first deploy code that stops writing the old column, wait for that rollout to complete, and only then drop it — four steps rather than three, because a straggler instance still writing the old column is exactly who the drop breaks. Each step is independently deployable and independently revertible, which is the entire point: at no moment does rolling back require a schema change.
+
+Locking is where the outage comes from. On PostgreSQL, adding a column is a metadata change rather than a table rewrite, and has been since version 11 even when the column has a default, provided that default is not volatile. That makes the statement fast but not safe: it still takes an ACCESS EXCLUSIVE lock, which conflicts with everything including a plain SELECT, so it waits behind any open transaction on the table and every query arriving meanwhile queues behind it. Building an index without CONCURRENTLY is the slower version of the same hazard — it holds a SHARE lock for the whole build, which blocks writes but not reads. MySQL's online DDL avoids blocking for many operations but not all, and the exceptions vary by version. Set a short lock timeout so a migration that cannot get its lock fails quickly instead of stalling the application, and test every migration against a copy with production-sized data — a migration that takes 200ms on a developer laptop can take forty minutes on a table with three hundred million rows.
+
+Backfills belong outside the migration. Update in bounded batches with a pause between them, so replication lag stays low and the write path is not starved. A single UPDATE across a large table is both a long lock and a replication event that can leave replicas minutes behind.
+
+Two rules worth holding to. Never combine a destructive change with a deploy that is hard to reverse; drop columns in their own change, after the code that used them is provably gone. And make migrations forward-only in production — "down" migrations are rarely tested, frequently lossy, and the honest recovery for a bad migration is a new migration that corrects it.`,
+    keyPoints: [
+      'Old and new code run against one database during rollout and rollback.',
+      'Expand, migrate, then stop writing the old column before dropping it — each step revertible on its own.',
+      'Locks are the outage: short lock timeouts, concurrent index builds, production-sized testing.',
+      'Backfill in batches outside the migration; forward-only in production.',
+    ],
+    related: ['deployment-strategies', 'replication-lag', 'acid-transactions', 'ci-cd'],
+  },
+  {
+    id: 'replication-lag',
+    title: 'Replication lag',
+    category: 'data',
+    short: 'A replica is a view of the past. How far past decides which reads can use it.',
+    body: `Asynchronous replication means the primary commits and acknowledges without waiting for replicas. Those replicas apply changes afterwards, and the distance between them is replication lag — usually milliseconds, occasionally minutes, and the difference is where the bugs live.
+
+The classic symptom is read-your-writes failure: a user updates their profile, the write goes to the primary, the page reloads, the read goes to a lagging replica, and the old value comes back. The user retries, sees it change, and reports a ghost. The fix is not to eliminate lag but to route reads that must reflect a recent write to the primary — either for a short window after writing, or by tagging those code paths explicitly. Everything else can tolerate a slightly stale view, which is what makes replicas useful at all.
+
+Lag rises for specific and recognisable reasons. A serial replication apply — PostgreSQL's WAL replay, or a MySQL replica left with parallel workers disabled — cannot keep up with a write-heavy primary. A long-running query on the replica blocks application of incoming changes. A large batch update generates a burst of changes. A replica placed in another region has propagation delay before anything else. Monitor lag as a first-class metric with an alert, because lag is also the size of your data loss window if the primary fails right now.
+
+Synchronous replication removes the window at a cost: every commit waits for at least one replica to acknowledge, so write latency now includes a network round trip and the availability of that replica. This is the trade in a Multi-AZ managed database — a few milliseconds of write latency in exchange for failover with no data loss. Across regions, the same choice costs tens of milliseconds per commit, which is why cross-region replication is nearly always asynchronous.
+
+Be precise about what a replica is for. Read scaling, yes. Availability, only if failover is automatic and fencing prevents the old primary from accepting writes. Backups, no — a replica faithfully replicates the DELETE that destroyed your data, in under a second.`,
+    keyPoints: [
+      'Lag causes read-your-writes failures; route recent-write reads to the primary.',
+      'Long replica queries, single-threaded apply and batch writes are the usual causes.',
+      'Lag is also your data loss window — monitor and alert on it.',
+      'Replicas are not backups; they replicate destructive statements faithfully.',
+    ],
+    related: ['read-replicas', 'eventual-consistency', 'consensus-and-quorum', 'rpo-rto'],
+  },
+  {
+    id: 'change-data-capture',
+    title: 'Change data capture',
+    category: 'data',
+    short: 'Read the database\'s own log to get an exact stream of what changed.',
+    body: `Getting data out of a database and into a search index, a cache, a warehouse or another service has three common approaches, and two of them are worse than they look. Polling for rows changed since a timestamp misses deletes, misses updates within the same second, and puts a recurring scan on the primary. Dual writes — the application writes to the database and publishes an event — are wrong whenever one succeeds and the other fails, which is a routine occurrence rather than an edge case.
+
+Change data capture takes the third route: read the replication log — the PostgreSQL write-ahead log, the MySQL binlog, the MongoDB oplog. On MongoDB it is already there; PostgreSQL needs wal_level set to logical, which costs a restart and a larger WAL volume, and MySQL needs row-format binary logging with full row images. Once it is on, every committed insert, update and delete appears in commit order, nothing is missed, ordering is preserved per table, and the application code is untouched. What the previous values of an updated row look like depends on configuration: PostgreSQL sends only the primary key unless the table's replica identity is set to full. Debezium is the common implementation, and the managed services (DMS, Datastream and their equivalents) do the same thing.
+
+Two patterns dominate its use. Streaming to analytics, replacing nightly batch extracts with a continuously updated warehouse. And the transactional outbox: the application writes its business change and an outbox row in one local transaction, and CDC publishes the outbox rows as events. That is the standard answer to dual writes — one atomic commit, with delivery handled afterwards, giving at-least-once publication without distributed transactions.
+
+The operational details decide whether it works. Delivery is at-least-once, so consumers must be idempotent; the same change will be delivered twice after a restart. Replication slots keep the log until the consumer has read it, which means a consumer that stops reading causes the primary's disk to fill — that is the failure that takes down the database rather than the pipeline. It does not take an outage: a consumer subscribed only to low-traffic tables never advances its position while the rest of the database generates WAL, which is why Debezium has a heartbeat interval. Alert on slot lag, and set max_slot_wal_keep_size so PostgreSQL invalidates the slot rather than filling the disk — re-initialising a consumer is a better afternoon than recovering a primary that ran out of space. Schema changes reach consumers differently by source: MySQL's binlog carries the DDL itself, while PostgreSQL's logical decoding does not, so the only signal is that the shape of subsequent change events has quietly changed. And initial snapshots of a large table are heavy; plan for them.
+
+The design property worth naming: CDC is coupling to another service's schema. It is excellent for your own data and questionable as a way to integrate across team boundaries, where an explicit event contract ages better.`,
+    keyPoints: [
+      'Reading the replication log captures every change in order, without touching the application.',
+      'The outbox pattern plus CDC is the standard fix for dual writes.',
+      'Delivery is at-least-once — consumers must be idempotent.',
+      'An unread replication slot fills the primary\'s disk; alert on slot lag.',
+    ],
+    related: ['event-streaming', 'idempotency', 'event-sourcing', 'replication-lag'],
+  },
+  {
+    id: 'sharding',
+    title: 'Sharding',
+    category: 'data',
+    short: 'Split the data across independent databases when one can no longer hold or serve it.',
+    body: `Vertical scaling, read replicas and caching solve read-heavy load. When the write volume or the working set outgrows a single machine, the remaining option is horizontal partitioning: splitting rows across several independent databases, each holding a subset.
+
+The shard key decides everything that follows. It should be present in nearly every query — otherwise reads fan out to every shard and you have multiplied your problems — and it should spread both data and traffic evenly. Customer or tenant identifier is the usual choice because it matches the access pattern; sequential keys are the usual mistake, since they concentrate all new writes on one shard. Hashing distributes evenly but destroys range queries; ranges keep them but need rebalancing when one range gets hot.
+
+Accept what you lose, because these are not small. Cross-shard joins are gone, and queries that need data from several shards become application-side work. Transactions across shards need a saga or a two-phase commit, both of which are considerably harder than a local transaction. Globally unique constraints — a unique email address — need a separate mechanism, since no shard can see the others. Aggregate reporting queries become fan-out jobs, which is why sharded systems usually also have a warehouse.
+
+Rebalancing is the operational reality nobody enjoys. Shards grow unevenly and eventually one must be split, which means moving data while serving traffic. Two things make it survivable: a routing layer between the application and the shards, so the mapping can change without a deploy, and many more logical shards than physical ones — allocate a thousand logical shards at the start, map them to four machines, and growth becomes reassignment rather than re-partitioning.
+
+Before sharding, be sure. It is one of the largest complexity increases available, and it is frequently reached for when the actual problem is a missing index, an N+1 query pattern, or a workload that would fit comfortably on hardware two sizes up. Managed systems that partition natively — DynamoDB, Cosmos DB, Spanner, CockroachDB — do this work for you in exchange for their own constraints, and choosing one of those is often the better answer.`,
+    keyPoints: [
+      'The shard key must appear in most queries and spread both data and traffic.',
+      'Cross-shard joins, transactions and unique constraints all become application problems.',
+      'Many logical shards mapped onto few physical ones makes growth a reassignment.',
+      'Exhaust indexing, caching and bigger hardware first; natively partitioned stores are often better.',
+    ],
+    related: ['partition-keys', 'nosql-modelling', 'cell-based-architecture', 'query-performance'],
+  },
+  {
+    id: 'query-performance',
+    title: 'Query performance',
+    category: 'data',
+    short: 'Most database emergencies are one missing index or one query issued a thousand times.',
+    body: `Databases are usually not slow because they are underpowered. They are slow because of a small number of recurring patterns, and recognising them is worth more than any amount of tuning.
+
+Missing indexes are first. Without one, the database reads every row; the query is fast on a developer's laptop with ten thousand rows and catastrophic at fifty million. Read the execution plan — a sequential scan on a large table in a frequently executed query is the finding. Composite indexes must match the column order your predicates use, index-only scans skip the table for pages the visibility map marks all-visible, which makes them dependent on vacuum keeping up, and every index has a cost: writes update it, and it consumes memory that would otherwise cache data. Unused indexes are pure overhead, and most schemas that have been alive for years have several.
+
+The N+1 pattern is second, and it is an application problem rather than a database one. Fetch a hundred orders, then loop and fetch each order's customer: one hundred and one round trips, each individually fast, together a page that takes two seconds. ORMs produce this by default through lazy loading. The fix is eager loading or a single query with a join, and the diagnostic is query count per request — a number worth having on a dashboard.
+
+Then the ones that appear under load. Unbounded result sets — a query with no LIMIT that returns fifty thousand rows because one customer is unusual. Queries inside a transaction that hold locks while calling an external service. Missing pagination replaced by OFFSET on page four thousand, which makes the database count through everything before it. And plan changes: the same query chooses a different plan once statistics shift, which is why "it was fine yesterday" is a real and confusing failure.
+
+Instrument it properly. Enable the slow query log, use the statement statistics extension to find the queries consuming the most total time — not the slowest single execution, which is often a nightly job nobody waits for — and alert on connection pool saturation and lock wait time. The query costing 8ms and running two thousand times a second is a bigger problem than the one taking four seconds once an hour.`,
+    keyPoints: [
+      'Read execution plans; a sequential scan on a large hot table is the usual finding.',
+      'N+1 loops are an application bug — track query count per request.',
+      'Total time consumed matters more than the slowest single execution.',
+      'Indexes cost writes and memory; unused ones are pure overhead.',
+    ],
+    related: ['connection-pooling', 'caching', 'iops', 'sharding'],
+  },
+  {
+    id: 'analytics-vs-transactions',
+    title: 'Transactional and analytical stores',
+    category: 'data',
+    short: 'One answers "what is this user\'s balance", the other "what did every user do last quarter".',
+    body: `Transactional databases (OLTP) are built for many small operations that each touch a few rows: read a user, insert an order, update a balance. They store data by row, index for point lookups, and guarantee consistency within a transaction. Analytical systems (OLAP) are built for few large queries that touch a few columns of very many rows: sum revenue by region for a year. They store data by column, which allows reading only the columns a query needs and compressing each column extremely well.
+
+That difference is why running analytics on your production database goes badly. The scan competes for CPU and disk with every ordinary lookup, and on PostgreSQL the long-running transaction it holds open stops vacuum reclaiming dead rows for as long as it runs, so the table bloats while the report is still executing. Both major engines take some care not to let a scan flush the working set out of the buffer cache — PostgreSQL reads large sequential scans through a small ring of buffers, InnoDB holds newly read pages in an old sublist until they are touched twice — but neither protects you from the contention. The analytics query itself is also slower than it would be on a columnar engine by an order of magnitude or more. A read replica dedicated to reporting is the cheap mitigation and is often enough. Beyond that, move the data.
+
+The architecture has consolidated around a few choices. A warehouse (BigQuery, Snowflake, Redshift, Synapse) stores modelled, curated data and answers business questions fast. A data lake holds raw files in object storage cheaply, which is the right home for data whose use is not yet known. The lakehouse pattern combines them: open table formats such as Iceberg or Delta Lake add transactions, schema evolution and time travel over files in object storage, queried by several engines without copying.
+
+Two operational points matter more than the architecture debate. Cost follows the data a query has to read, though the meter differs: BigQuery's on-demand model bills bytes processed directly, while Snowflake, Redshift and BigQuery's capacity pricing bill for compute time, which a large scan consumes more of. Either way, partitioning and clustering on the columns queries filter by is the difference between an affordable warehouse and a surprising bill. And freshness is a requirement to state explicitly: hourly batch loading, continuous streaming through CDC, and querying the source directly are three different costs and three different answers to "how recent is this number".
+
+Keep the boundary clean. The operational system should not depend on the warehouse to serve a user request, and the warehouse should not write back into the operational store. When those two mix, an analytics failure becomes a production outage.`,
+    keyPoints: [
+      'Row stores serve point operations; column stores serve wide aggregate scans.',
+      'Analytics on the production database competes for I/O and holds transactions open, which is what slows everything else.',
+      'Lakehouse formats add transactions and schema evolution over object storage.',
+      'Cost follows the data a query reads, billed as bytes or as compute time — partition on what queries filter by.',
+    ],
+    related: ['object-storage', 'change-data-capture', 'read-replicas', 'cost-optimisation'],
   },
 ]

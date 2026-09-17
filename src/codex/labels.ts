@@ -48,6 +48,31 @@ const OVERRIDES: Record<string, string> = {
   'availability-math': 'The arithmetic of nines',
   'error-budgets': 'Error budgets',
   'cost-optimisation': 'Cost optimisation',
+  'gitops': 'GitOps',
+  'mtls': 'Mutual TLS',
+  'sbom-and-provenance': 'SBOMs & provenance',
+  'operators-and-crds': 'Operators & CRDs',
+  'gateway-api': 'The Gateway API',
+  'http-versions': 'HTTP/1.1, 2 and 3',
+  'queueing-theory': 'Why latency explodes near full',
+  'consensus-and-quorum': 'Consensus & quorum',
+  'kubernetes-autoscaling': 'Autoscaling in Kubernetes',
+  'namespaces-and-quotas': 'Namespaces & quotas',
+  'analytics-vs-transactions': 'OLTP vs OLAP',
+  'self-service-guardrails': 'Self-service & guardrails',
+  'golden-signals': 'The four golden signals',
+  'release-versioning': 'Artefacts & versioning',
+  'spot-capacity': 'Spot & preemptible capacity',
+  'instance-selection': 'Choosing instance types',
+  'egress-control': 'Controlling egress',
+  'stateful-workloads': 'State in Kubernetes',
+  'internal-developer-platform': 'The internal developer platform',
+  'change-data-capture': 'Change data capture',
+  'cell-based-architecture': 'Cell-based architecture',
+  'log-management': 'Logs at scale',
+  'on-call': 'On-call',
+  'toil': 'Toil',
+  'developer-experience': 'Developer experience',
 }
 
 export function conceptLabel(id: string): string {
@@ -62,4 +87,4 @@ export function conceptLabel(id: string): string {
  * from `concepts.ts` so the home page does not pull in the whole codex; a test
  * asserts it stays accurate.
  */
-export const CODEX_ENTRY_COUNT = 105
+export const CODEX_ENTRY_COUNT = 162

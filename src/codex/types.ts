@@ -1,7 +1,7 @@
 import type { CodeSnippet } from '@/catalog/schema/types'
 
 export const CONCEPT_CATEGORIES = [
-  'networking', 'compute', 'data', 'reliability', 'security', 'operations', 'kubernetes',
+  'networking', 'compute', 'data', 'reliability', 'security', 'operations', 'platform', 'kubernetes',
 ] as const
 export type ConceptCategory = (typeof CONCEPT_CATEGORIES)[number]
 
@@ -33,5 +33,6 @@ export const CATEGORY_LABEL: Record<ConceptCategory, { label: string; blurb: str
   reliability: { label: 'Reliability', blurb: 'Surviving failure on purpose' },
   security: { label: 'Security', blurb: 'Identity, isolation and the attacks they stop' },
   operations: { label: 'Operations', blurb: 'Shipping, observing and responding' },
+  platform: { label: 'Platform engineering', blurb: 'Paved roads, self-service and the teams that use them' },
   kubernetes: { label: 'Kubernetes', blurb: 'The control loop and everything around it' },
 }
