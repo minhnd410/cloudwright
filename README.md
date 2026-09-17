@@ -110,11 +110,11 @@ equivalents sit side by side. Learn the shape once; it transfers.
 
 <img src="docs/media/codex.png" alt="A codex entry with a runnable comparison embedded in the article" width="100%">
 
-162 entries covering networking, compute, data, reliability, security, operations,
-platform engineering and Kubernetes — the ground a cloud engineer, a platform engineer, a
-DevOps engineer and an SRE each stand on. Several carry interactive explainers — an OSI layer browser, a CIDR
-calculator, a TLS handshake walkthrough, an availability-maths calculator, an error
-budget burn-rate tool.
+162 entries across eight categories — networking, compute, data, reliability, security,
+operations, platform engineering and Kubernetes — covering the ground a cloud engineer, a
+platform engineer, a DevOps engineer and an SRE each stand on. Eleven carry interactive
+explainers: an OSI layer browser, a CIDR calculator, a TLS handshake walkthrough, an
+availability-maths calculator, an error budget burn-rate tool.
 
 Every entry embeds a **runnable** illustration: usually the same architecture twice, with
 and without the thing the entry is about. Caching is not something you are told removes
@@ -127,8 +127,8 @@ and without the thing the entry is about. Caching is not something you are told 
 Fifteen scenarios built around problems people have actually been paged for — an exposed
 database, a Black Friday spike, a CrashLoopBackOff, a ransomware event, a bill nobody can
 explain, a pager that fires all night and stays silent through the real outage, a golden
-path forty teams will copy. Each has objectives evaluated live against your architecture, progressive hints,
-and a debrief that states the lesson plainly.
+path forty teams will copy. Each has objectives evaluated live against your architecture,
+progressive hints, and a debrief that states the lesson plainly.
 
 Every mission is **proven winnable by a test**, because an objective that quietly becomes
 impossible is the kind of bug you cannot find by hand. That test has already caught three.
