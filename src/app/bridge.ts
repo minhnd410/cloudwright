@@ -1,4 +1,4 @@
-import { useGame } from '@/store/gameStore'
+import { useGame, type SimSpeed } from '@/store/gameStore'
 import { useTabs } from '@/store/tabStore'
 import { useUi } from '@/store/uiStore'
 import { useTheme, type ThemePref } from '@/store/themeStore'
@@ -25,6 +25,8 @@ export interface CloudwrightBridge {
   refit(): void
   /** Runs exactly `count` simulation ticks, synchronously. */
   step(count?: number): void
+  /** Sets the visual transport speed used by animated traffic on edges. */
+  setSpeed(speed: SimSpeed): void
   reset(): void
   injectIncident(nodeId: string, modeId: string): boolean
   clearIncidents(): void
@@ -59,6 +61,10 @@ export function installBridge() {
     step(count = 1) {
       const game = useGame.getState()
       for (let i = 0; i < count; i++) game.step()
+    },
+
+    setSpeed(speed) {
+      useGame.getState().setSpeed(speed)
     },
 
     reset() {

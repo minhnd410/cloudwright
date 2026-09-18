@@ -137,6 +137,9 @@ async function openSession(appUrl: string, options: RenderOptions): Promise<Sess
   await page.evaluate((opts) => {
     const bridge = (window as unknown as { __cloudwright: Record<string, (...a: unknown[]) => unknown> }).__cloudwright
     bridge.setChromeless(true)
+    // The UI starts paused; recordings still advance exact ticks, so enable the
+    // visual transport speed or FlowEdge's dash and packet animations stay frozen.
+    bridge.setSpeed(1)
     if (opts.loadMultiplier !== undefined) bridge.setLoadMultiplier(opts.loadMultiplier)
     if (opts.attacksEnabled !== undefined) bridge.setAttacksEnabled(opts.attacksEnabled)
     for (const incident of opts.incidents ?? []) bridge.injectIncident(incident.nodeId, incident.modeId)
