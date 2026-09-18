@@ -70,6 +70,13 @@ const incidentSchema = z.object({
   modeId: z.string().describe('A failure mode id from describe_resource.'),
 })
 
+const evidenceSchema = z.array(z.object({
+  label: z.string().describe('Short metric label, such as "Errors" or "Demand".'),
+  value: z.string().describe('Measured value shown large in the evidence panel.'),
+  detail: z.string().optional().describe('Brief provenance or interpretation.'),
+  tone: z.enum(['default', 'good', 'warn', 'bad']).optional(),
+})).max(3).optional().describe('Up to three measured readouts shown beside the diagram.')
+
 /** Accepts either a full saved diagram or a spec to build one from. */
 const diagramInput = z.union([savedDiagramSchema, diagramSpecSchema])
 
@@ -526,13 +533,14 @@ export function createCloudwrightServer(options: ServerOptions = {}) {
           theme: z.enum(['light', 'dark']).optional().describe('Colour scheme to render in. Default dark.'),
           title: z.string().optional().describe('Headline drawn over the canvas — state the claim, not the diagram\'s name.'),
           subtitle: z.string().optional().describe('One line under the title, usually the numbers that prove the claim.'),
+          evidence: evidenceSchema,
         },
       },
-      async ({ diagram, ticks, incidents, width, height, loadMultiplier, theme, title, subtitle }) => {
+      async ({ diagram, ticks, incidents, width, height, loadMultiplier, theme, title, subtitle, evidence }) => {
         const { diagram: doc } = coerceDiagram(diagram)
         const appUrl = await resolveAppUrl(options.appUrl, DIST)
         const { base64, snapshot } = await renderScreenshot(appUrl, {
-          diagram: doc, ticks, incidents, width, height, loadMultiplier, theme, title, subtitle,
+          diagram: doc, ticks, incidents, width, height, loadMultiplier, theme, title, subtitle, evidence,
         })
         return {
           content: [
@@ -562,13 +570,14 @@ export function createCloudwrightServer(options: ServerOptions = {}) {
           theme: z.enum(['light', 'dark']).optional().describe('Colour scheme to render in. Default dark.'),
           title: z.string().optional().describe('Headline drawn over the canvas — state the claim, not the diagram\'s name.'),
           subtitle: z.string().optional().describe('One line under the title, usually the numbers that prove the claim.'),
+          evidence: evidenceSchema,
         },
       },
-      async ({ diagram, frames, fps, outputPath, timeline, width, height, scale, loadMultiplier, theme, title, subtitle }) => {
+      async ({ diagram, frames, fps, outputPath, timeline, width, height, scale, loadMultiplier, theme, title, subtitle, evidence }) => {
         const { diagram: doc } = coerceDiagram(diagram)
         const appUrl = await resolveAppUrl(options.appUrl, DIST)
         const result = await renderVideo(appUrl, {
-          diagram: doc, frames, fps, outputPath, timeline, width, height, scale, loadMultiplier, theme, title, subtitle,
+          diagram: doc, frames, fps, outputPath, timeline, width, height, scale, loadMultiplier, theme, title, subtitle, evidence,
         })
         return text({
           ...result,

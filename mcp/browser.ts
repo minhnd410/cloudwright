@@ -97,6 +97,8 @@ export interface RenderOptions {
   title?: string
   /** One line under the title, usually the numbers that prove it. */
   subtitle?: string
+  /** Up to three measured readouts that make the claim legible without zooming into the graph. */
+  evidence?: { label: string; value: string; detail?: string; tone?: 'default' | 'good' | 'warn' | 'bad' }[]
 }
 
 interface Session {
@@ -144,6 +146,7 @@ async function openSession(appUrl: string, options: RenderOptions): Promise<Sess
   await new Promise((r) => setTimeout(r, 250))
   await refit(page)
   await applyCaption(page, options.title, options.subtitle)
+  await applyEvidence(page, options.evidence)
 
   return { browser, page }
 }
@@ -186,6 +189,98 @@ async function applyCaption(page: Page, title?: string, subtitle?: string) {
     }
     document.body.appendChild(wrap)
   }, { title: title ?? '', subtitle: subtitle ?? '' })
+}
+
+async function applyEvidence(
+  page: Page,
+  evidence?: { label: string; value: string; detail?: string; tone?: 'default' | 'good' | 'warn' | 'bad' }[],
+) {
+  if (!evidence?.length) return
+  await page.evaluate((items) => {
+    document.getElementById('cw-evidence')?.remove()
+    const panel = document.createElement('aside')
+    panel.id = 'cw-evidence'
+    panel.style.cssText = [
+      'position:fixed', 'z-index:2147483646', 'width:min(620px,calc(100vw - 64px))',
+      'box-sizing:border-box', 'padding:14px 16px',
+      'border:1px solid rgba(126,151,196,.28)', 'border-radius:16px',
+      'background:rgba(10,16,29,.9)', 'box-shadow:0 18px 42px rgba(0,0,0,.28)',
+      'font-family:var(--font-sans)', 'pointer-events:none',
+    ].join(';')
+
+    const panelWidth = Math.min(620, Math.max(280, window.innerWidth - 64))
+    const panelHeight = 172
+    const nodes = [...document.querySelectorAll('.react-flow__node')].map((node) => {
+      const rect = node.getBoundingClientRect()
+      return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom }
+    })
+    const candidates = [
+      { left: 32, top: 170 },
+      { left: 32, top: window.innerHeight - panelHeight - 32 },
+      { left: window.innerWidth - panelWidth - 32, top: 170 },
+      { left: window.innerWidth - panelWidth - 32, top: window.innerHeight - panelHeight - 32 },
+    ]
+    const overlaps = (candidate: { left: number; top: number }, node: { left: number; top: number; right: number; bottom: number }) =>
+      candidate.left < node.right && candidate.left + panelWidth > node.left &&
+      candidate.top < node.bottom && candidate.top + panelHeight > node.top
+    const position = candidates.find((candidate) => !nodes.some((node) => overlaps(candidate, node))) ?? candidates[0]
+    panel.style.left = `${position.left}px`
+    panel.style.top = `${position.top}px`
+
+    const heading = document.createElement('div')
+    heading.textContent = 'MODELLED RESULT'
+    heading.style.cssText = [
+      'margin-bottom:10px', 'font-size:10px', 'font-weight:700',
+      'letter-spacing:.14em', 'color:var(--color-ink-faint)',
+    ].join(';')
+    panel.appendChild(heading)
+
+    const cards = document.createElement('div')
+    cards.style.cssText = 'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px'
+
+    const colours = {
+      default: 'var(--color-ink)',
+      good: '#58e0c4',
+      warn: '#f0bf63',
+      bad: '#f56f7f',
+    }
+    for (const item of items.slice(0, 3)) {
+      const card = document.createElement('div')
+      card.style.cssText = [
+        'min-width:0', 'padding:10px 11px', 'border:1px solid rgba(126,151,196,.18)',
+        'border-radius:10px', 'background:rgba(20,29,48,.72)',
+      ].join(';')
+
+      const label = document.createElement('div')
+      label.textContent = item.label
+      label.style.cssText = [
+        'font-size:11px', 'font-weight:650', 'letter-spacing:.08em',
+        'text-transform:uppercase', 'color:var(--color-ink-dim)',
+      ].join(';')
+      card.appendChild(label)
+
+      const value = document.createElement('div')
+      value.textContent = item.value
+      value.style.cssText = [
+        'margin-top:4px', 'font-size:22px', 'line-height:1.05',
+        'font-weight:720', 'color:' + (colours[item.tone ?? 'default']),
+      ].join(';')
+      card.appendChild(value)
+
+      if (item.detail) {
+        const detail = document.createElement('div')
+        detail.textContent = item.detail
+        detail.style.cssText = [
+          'margin-top:5px', 'font-size:12px', 'line-height:1.35',
+          'color:var(--color-ink-faint)',
+        ].join(';')
+        card.appendChild(detail)
+      }
+      cards.appendChild(card)
+    }
+    panel.appendChild(cards)
+    document.body.appendChild(panel)
+  }, evidence)
 }
 
 async function stepAndSettle(page: Page, ticks: number) {
