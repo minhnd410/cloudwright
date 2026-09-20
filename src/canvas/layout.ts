@@ -55,8 +55,52 @@ export function autoLayout(diagram: SavedDiagram): SavedDiagram {
       return size
     }
 
+      // Keep a connected hub beside the lanes that send traffic to and from it.
+      // A square grid makes those routes cross through unrelated siblings.
+      const routedLanes = siblingFlowCounts(id, kids, byId, diagram.edges)
+      const rankedKids = kids
+        .map((kid) => ({ kid, count: routedLanes.get(kid)! }))
+        .sort((left, right) => {
+          const leftDegree = left.count.incoming + left.count.outgoing
+          const rightDegree = right.count.incoming + right.count.outgoing
+          return rightDegree - leftDegree
+        })
+      const hub = rankedKids[0]
+      const laneKids = kids.filter((kid) => {
+        const counts = routedLanes.get(kid)!
+        return kid !== hub?.kid && counts.incoming > 0 && counts.outgoing > 0
+      })
+      const supportKids = kids.filter((kid) => !laneKids.includes(kid))
+
+      if (hub && hub.count.incoming + hub.count.outgoing >= 3 && laneKids.length > 0 && supportKids.length > 0) {
+        const supportSizes = supportKids.map((kid) => sizeOf(kid))
+        const laneSizes = laneKids.map((kid) => sizeOf(kid))
+        const supportHeight = supportSizes.reduce((total, size) => total + size.h, 0) + GAP_Y * (supportSizes.length - 1)
+        const laneHeight = laneSizes.reduce((total, size) => total + size.h, 0) + GAP_Y * (laneSizes.length - 1)
+        const contentHeight = Math.max(supportHeight, laneHeight)
+        const placeColumn = (ids: string[], memberSizes: Size[], columnX: number, columnHeight: number) => {
+          let y = HEADER + (contentHeight - columnHeight) / 2
+          ids.forEach((kid, index) => {
+            positions.set(kid, { x: columnX, y })
+            y += memberSizes[index].h + GAP_Y
+          })
+        }
+
+        const supportWidth = Math.max(...supportSizes.map((size) => size.w))
+        const laneWidth = Math.max(...laneSizes.map((size) => size.w))
+        placeColumn(supportKids, supportSizes, PAD, supportHeight)
+        placeColumn(laneKids, laneSizes, PAD + supportWidth + GAP_X, laneHeight)
+
+        const size = {
+          w: PAD * 2 + supportWidth + GAP_X + laneWidth,
+          h: HEADER + contentHeight + PAD,
+        }
+        sizes.set(id, size)
+        return size
+      }
+
     const kidSizes = kids.map((kid) => sizeOf(kid))
-    const columns = Math.max(1, Math.round(Math.sqrt(kids.length)))
+    const columns = kids.length === 2 ? 2 : Math.max(1, Math.round(Math.sqrt(kids.length)))
 
     // Column widths and row heights come from the widest and tallest members,
     // so a container holding other containers still fits everything.
@@ -168,4 +212,35 @@ function descendants(id: string, children: Map<string, string[]>): string[] {
     stack.push(...(children.get(current) ?? []))
   }
   return out
+}
+
+function siblingFlowCounts(
+  parentId: string,
+  childIds: string[],
+  byId: Map<string, SavedDiagram['nodes'][number]>,
+  edges: SavedDiagram['edges'],
+): Map<string, { incoming: number; outgoing: number }> {
+  const counts = new Map(childIds.map((childId) => [childId, { incoming: 0, outgoing: 0 }]))
+  for (const edge of edges) {
+    if (!isTrafficFlow(edge.flow)) continue
+    const sourceBranch = branchAt(parentId, edge.source, byId)
+    const targetBranch = branchAt(parentId, edge.target, byId)
+    if (!sourceBranch || !targetBranch || sourceBranch === targetBranch) continue
+    counts.get(sourceBranch)!.outgoing++
+    counts.get(targetBranch)!.incoming++
+  }
+  return counts
+}
+
+function branchAt(
+  parentId: string,
+  nodeId: string,
+  byId: Map<string, SavedDiagram['nodes'][number]>,
+): string | undefined {
+  let current = byId.get(nodeId)
+  while (current?.parentId) {
+    if (current.parentId === parentId) return current.id
+    current = byId.get(current.parentId)
+  }
+  return undefined
 }

@@ -8,8 +8,23 @@ import type { CwEdge, CwNode, SavedDiagram } from './types'
  * and by the embedded codex canvases so both render a diagram identically.
  */
 export function toFlow(diagram: SavedDiagram): { nodes: CwNode[]; edges: CwEdge[] } {
-  const nodes: CwNode[] = diagram.nodes
+  const byId = new Map(diagram.nodes.map((node) => [node.id, node]))
+  const depthOf = (node: SavedDiagram['nodes'][number]) => {
+    let depth = 0
+    let parentId = node.parentId
+    let guard = 0
+    while (parentId && guard++ < 10) {
+      depth++
+      parentId = byId.get(parentId)?.parentId
+    }
+    return depth
+  }
+
+  const orderedNodes = diagram.nodes
     .filter((n) => getResource(n.defId))
+    .sort((left, right) => depthOf(left) - depthOf(right))
+
+  const nodes: CwNode[] = orderedNodes
     .map((n) => {
       const def = requireResource(n.defId)
       return {

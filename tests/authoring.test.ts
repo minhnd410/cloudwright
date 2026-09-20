@@ -3,7 +3,7 @@ import { buildDiagram, explainConnection, suggestPorts } from '@/catalog/authori
 import { autoLayout } from '@/canvas/layout'
 import { run } from '@/sim/engine'
 import { review } from '@/sim/advisor'
-import { toSimGraph } from '@/store/serialize'
+import { toFlow, toSimGraph } from '@/store/serialize'
 import { TEMPLATES } from '@/scenarios/templates'
 import { demoFor, starterFor } from '@/codex/demos'
 import { ALL_CONCEPTS } from '@/codex/concepts'
@@ -176,6 +176,62 @@ describe('codex demos', () => {
 })
 
 describe('layout with nested containers', () => {
+  it('serializes parents before nested children', () => {
+    const built = buildDiagram({
+      name: 'Parent order',
+      nodes: [
+        { id: 'alb', type: 'aws.alb', in: 'private' },
+        { id: 'private', type: 'aws.subnet', in: 'vpc' },
+        { id: 'vpc', type: 'aws.vpc' },
+      ],
+    })
+    expect(built.ok).toBe(true)
+    if (!built.ok) return
+
+    expect(toFlow(built.diagram).nodes.map((node) => node.id)).toEqual(['vpc', 'private', 'alb'])
+  })
+
+  it('puts a shared routing hub beside ordered private lanes', () => {
+    const built = buildDiagram({
+      name: 'NAT lanes',
+      nodes: [
+        { id: 'users', type: 'core.client' },
+        { id: 'alb', type: 'aws.alb', in: 'public-a' },
+        { id: 'vpc', type: 'aws.vpc' },
+        { id: 'public-a', type: 'aws.subnet', in: 'vpc' },
+        { id: 'private-a', type: 'aws.subnet', in: 'vpc' },
+        { id: 'private-b', type: 'aws.subnet', in: 'vpc' },
+        { id: 'private-c', type: 'aws.subnet', in: 'vpc' },
+        { id: 'app-a', type: 'aws.ec2', in: 'private-a' },
+        { id: 'app-b', type: 'aws.ec2', in: 'private-b' },
+        { id: 'app-c', type: 'aws.ec2', in: 'private-c' },
+        { id: 'nat', type: 'aws.nat', in: 'public-a' },
+        { id: 'igw', type: 'aws.igw', in: 'vpc' },
+      ],
+      edges: [
+        { from: 'users', to: 'alb' },
+        { from: 'alb', to: 'app-a' },
+        { from: 'alb', to: 'app-b' },
+        { from: 'alb', to: 'app-c' },
+        { from: 'app-a', to: 'nat' },
+        { from: 'app-b', to: 'nat' },
+        { from: 'app-c', to: 'nat' },
+        { from: 'nat', to: 'igw' },
+      ],
+    })
+    expect(built.ok).toBe(true)
+    if (!built.ok) return
+
+    const node = (id: string) => built.diagram.nodes.find((candidate) => candidate.id === id)!
+    const privateSubnets = ['private-a', 'private-b', 'private-c'].map(node)
+    expect(node('public-a').x).toBeLessThan(privateSubnets[0].x)
+    expect(new Set(privateSubnets.map((subnet) => subnet.x)).size).toBe(1)
+    expect(privateSubnets[0].y).toBeLessThan(privateSubnets[1].y)
+    expect(privateSubnets[1].y).toBeLessThan(privateSubnets[2].y)
+    expect(node('alb').x).toBeLessThan(node('nat').x)
+    expect(node('alb').y).toBe(node('nat').y)
+  })
+
   it('keeps every child fully inside its parent', () => {
     for (const template of TEMPLATES) {
       const laid = autoLayout(template.build())

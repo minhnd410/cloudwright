@@ -8,10 +8,13 @@ export interface UiState {
   panels: Record<PanelId, boolean>
   /** Hides all chrome for screenshots and embeds. */
   chromeless: boolean
+  /** Reserves a top band for capture captions without affecting the editor. */
+  captureTopInset: number
   toggle: (panel: PanelId) => void
   setPanel: (panel: PanelId, open: boolean) => void
   showAll: () => void
   setChromeless: (on: boolean) => void
+  setCaptureTopInset: (inset: number) => void
 }
 
 function load(): Record<PanelId, boolean> {
@@ -44,6 +47,7 @@ export const PANEL_META: Record<PanelId, { label: string; shortcut: string; hint
 export const useUi = create<UiState>((set, get) => ({
   panels: load(),
   chromeless: false,
+  captureTopInset: 0,
 
   toggle: (panel) => {
     const panels = { ...get().panels, [panel]: !get().panels[panel] }
@@ -64,4 +68,5 @@ export const useUi = create<UiState>((set, get) => ({
   },
 
   setChromeless: (on) => set({ chromeless: on }),
+  setCaptureTopInset: (inset) => set({ captureTopInset: Math.max(0, inset) }),
 }))

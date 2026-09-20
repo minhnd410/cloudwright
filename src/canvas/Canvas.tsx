@@ -13,6 +13,7 @@ import { CanvasControls } from './controls/CanvasControls'
 import { CanvasEmptyState } from './CanvasEmptyState'
 import { NodeHoverCard, type HoverTarget } from './NodeHoverCard'
 import { useMission } from '@/store/missionStore'
+import { useUi } from '@/store/uiStore'
 
 /** Width of the mission objective panel, used to offset the initial framing. */
 const MISSION_PANEL_WIDTH = 300
@@ -39,6 +40,7 @@ export function Canvas() {
   const addNode = useGame((s) => s.addNode)
 
   const fitSignal = useGame((s) => s.fitSignal)
+  const captureTopInset = useUi((s) => s.captureTopInset)
   const missionActive = useMission((s) => s.activeId !== null)
 
   // Re-frame when a whole diagram is swapped in. When a mission panel is open,
@@ -47,6 +49,20 @@ export function Canvas() {
     if (fitSignal === 0) return
     const timer = setTimeout(async () => {
       await fitView({ duration: 0, padding: 0.08, maxZoom: 1 })
+      if (captureTopInset > 0 && wrapper.current) {
+        const { width, height } = wrapper.current.getBoundingClientRect()
+        const inset = Math.min(captureTopInset, height * 0.25)
+        const scale = (height - inset) / height
+        const viewport = getViewport()
+        setViewport(
+          {
+            x: width / 2 - (width / 2 - viewport.x) * scale,
+            y: inset + viewport.y * scale,
+            zoom: viewport.zoom * scale,
+          },
+          { duration: 0 },
+        )
+      }
       if (!missionActive || !wrapper.current) return
 
       // Zoom out about the centre by exactly the fraction the panel covers,
@@ -66,7 +82,7 @@ export function Canvas() {
       )
     }, 60)
     return () => clearTimeout(timer)
-  }, [fitSignal, fitView, getViewport, setViewport, missionActive])
+  }, [captureTopInset, fitSignal, fitView, getViewport, setViewport, missionActive])
 
   const onConnect = useCallback((c: Connection) => connect(c), [connect])
 

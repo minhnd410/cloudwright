@@ -23,6 +23,8 @@ export interface CloudwrightBridge {
   setTheme(theme: ThemePref): void
   /** Re-runs fit-to-view, e.g. after the layout has changed size. */
   refit(): void
+  /** Reserves space above the graph for a capture caption. */
+  setCaptureTopInset(inset: number): void
   /** Runs exactly `count` simulation ticks, synchronously. */
   step(count?: number): void
   /** Sets the visual transport speed used by animated traffic on edges. */
@@ -56,6 +58,10 @@ export function installBridge() {
 
     refit() {
       useGame.setState((s) => ({ fitSignal: s.fitSignal + 1 }))
+    },
+
+    setCaptureTopInset(inset) {
+      useUi.getState().setCaptureTopInset(inset)
     },
 
     step(count = 1) {
