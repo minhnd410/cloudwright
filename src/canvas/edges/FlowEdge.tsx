@@ -48,6 +48,7 @@ export const FlowEdge = memo(function FlowEdge({
   const packets = speed > 0 ? packetCount(intensity) : 0
   // Faster traffic means faster packets, but never so fast it becomes a blur.
   const travelSeconds = Math.max(0.7, 2.8 - intensity * 1.9) / Math.max(speed, 1)
+  const markerId = `cw-flow-arrow-${id.replace(/[^a-zA-Z0-9_-]/g, '-')}`
 
   const sourceName = sourceNode ? getResource(String((sourceNode.data as { defId?: string }).defId))?.short : undefined
   const targetName = targetNode ? getResource(String((targetNode.data as { defId?: string }).defId))?.short : undefined
@@ -65,9 +66,27 @@ export const FlowEdge = memo(function FlowEdge({
         style={{ cursor: 'pointer' }}
       />
 
+      {active && speed > 0 && (
+        <defs>
+          <marker
+            id={markerId}
+            markerWidth="8"
+            markerHeight="8"
+            refX="8"
+            refY="4"
+            orient="auto"
+            markerUnits="userSpaceOnUse"
+            viewBox="0 0 8 8"
+          >
+            <path d="M 0 0 L 8 4 L 0 8 z" fill={colour} />
+          </marker>
+        </defs>
+      )}
+
       <BaseEdge
         id={id}
         path={path}
+        markerEnd={active && speed > 0 ? `url(#${markerId})` : undefined}
         className="cw-edge-base"
         style={{
           stroke: colour,
@@ -82,10 +101,10 @@ export const FlowEdge = memo(function FlowEdge({
         <path
           d={path}
           fill="none"
-          strokeWidth={2.6}
+          strokeWidth={2.4}
           strokeLinecap="round"
-          strokeDasharray="1 14"
-          opacity={0.75}
+          strokeDasharray="7 13"
+          opacity={0.85}
           style={{ stroke: colour, animation: `dash ${1.4 / Math.max(speed, 1)}s linear infinite` }}
         />
       )}

@@ -120,6 +120,8 @@ async function openSession(appUrl: string, options: RenderOptions): Promise<Sess
     args: ['--no-sandbox', '--disable-dev-shm-usage', '--force-color-profile=srgb', '--hide-scrollbars'],
   })
   const page = await browser.newPage()
+  const portraitCapture = (options.height ?? 900) > (options.width ?? 1440)
+  const captureTopInset = portraitCapture && (options.title || options.subtitle) ? 410 : (options.title || options.subtitle ? 56 : 0)
   await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: options.theme ?? 'dark' }])
   await page.setViewport({
     width: options.width ?? 1440,
@@ -137,7 +139,7 @@ async function openSession(appUrl: string, options: RenderOptions): Promise<Sess
   await page.evaluate((opts) => {
     const bridge = (window as unknown as { __cloudwright: Record<string, (...a: unknown[]) => unknown> }).__cloudwright
     bridge.setChromeless(true)
-    bridge.setCaptureTopInset(opts.title || opts.subtitle ? 56 : 0)
+    bridge.setCaptureTopInset(opts.captureTopInset)
     // The UI starts paused; recordings still advance exact ticks, so enable the
     // visual transport speed or FlowEdge's dash and packet animations stay frozen.
     bridge.setSpeed(1)
@@ -150,13 +152,14 @@ async function openSession(appUrl: string, options: RenderOptions): Promise<Sess
     attacksEnabled: options.attacksEnabled,
     title: options.title,
     subtitle: options.subtitle,
+    captureTopInset,
   })
 
   // Hiding the panels changes the canvas size, so re-frame before capturing.
   await new Promise((r) => setTimeout(r, 250))
   await refit(page)
-  await applyCaption(page, options.title, options.subtitle)
-  await applyEvidence(page, options.evidence)
+  await applyCaption(page, options.title, options.subtitle, portraitCapture)
+  await applyEvidence(page, options.evidence, portraitCapture)
 
   return { browser, page }
 }
@@ -167,15 +170,15 @@ async function openSession(appUrl: string, options: RenderOptions): Promise<Sess
  * is. Fixed position and pointer-events: none, so it never disturbs the layout
  * React Flow is measuring against.
  */
-async function applyCaption(page: Page, title?: string, subtitle?: string) {
+async function applyCaption(page: Page, title?: string, subtitle?: string, portrait = false) {
   if (!title && !subtitle) return
-  await page.evaluate((caption) => {
+  await page.evaluate(({ caption, portrait }) => {
     document.getElementById('cw-caption')?.remove()
     const wrap = document.createElement('div')
     wrap.id = 'cw-caption'
     wrap.style.cssText = [
       'position:fixed', 'inset:0 0 auto 0', 'z-index:2147483647', 'pointer-events:none',
-      'padding:34px 44px 44px', 'font-family:var(--font-sans)',
+      `padding:${portrait ? '42px 40px 48px' : '34px 44px 44px'}`, 'font-family:var(--font-sans)',
       'background:linear-gradient(180deg, var(--color-void) 30%, transparent 100%)',
     ].join(';')
 
@@ -183,7 +186,7 @@ async function applyCaption(page: Page, title?: string, subtitle?: string) {
       const h = document.createElement('div')
       h.textContent = caption.title
       h.style.cssText = [
-        'font-size:32px', 'line-height:1.15', 'font-weight:640',
+        `font-size:${portrait ? '52px' : '32px'}`, 'line-height:1.1', 'font-weight:700',
         'letter-spacing:-0.015em', 'color:var(--color-ink)',
       ].join(';')
       wrap.appendChild(h)
@@ -192,42 +195,46 @@ async function applyCaption(page: Page, title?: string, subtitle?: string) {
       const p = document.createElement('div')
       p.textContent = caption.subtitle
       p.style.cssText = [
-        'margin-top:10px', 'font-size:18px', 'line-height:1.35',
+        `margin-top:${portrait ? '18px' : '10px'}`, `font-size:${portrait ? '28px' : '18px'}`, 'line-height:1.3',
         'color:var(--color-ink-dim)',
       ].join(';')
       wrap.appendChild(p)
     }
     document.body.appendChild(wrap)
-  }, { title: title ?? '', subtitle: subtitle ?? '' })
+  }, { caption: { title: title ?? '', subtitle: subtitle ?? '' }, portrait })
 }
 
 async function applyEvidence(
   page: Page,
   evidence?: { label: string; value: string; detail?: string; tone?: 'default' | 'good' | 'warn' | 'bad' }[],
+  portrait = false,
 ) {
   if (!evidence?.length) return
-  await page.evaluate((items) => {
+  await page.evaluate(({ items, portrait }) => {
     document.getElementById('cw-evidence')?.remove()
     const panel = document.createElement('aside')
     panel.id = 'cw-evidence'
     panel.style.cssText = [
-      'position:fixed', 'z-index:2147483646', 'width:min(620px,calc(100vw - 64px))',
-      'box-sizing:border-box', 'padding:14px 16px',
+      'position:fixed', 'z-index:2147483646',
+      `width:${portrait ? 'calc(100vw - 80px)' : 'min(620px,calc(100vw - 64px))'}`,
+      'box-sizing:border-box', `padding:${portrait ? '22px 24px' : '14px 16px'}`,
       'border:1px solid rgba(126,151,196,.28)', 'border-radius:16px',
       'background:rgba(10,16,29,.9)', 'box-shadow:0 18px 42px rgba(0,0,0,.28)',
       'font-family:var(--font-sans)', 'pointer-events:none',
     ].join(';')
 
-    const panelWidth = Math.min(620, Math.max(280, window.innerWidth - 64))
-    const panelHeight = 172
+    const panelWidth = portrait ? window.innerWidth - 80 : Math.min(620, Math.max(280, window.innerWidth - 64))
+    const panelHeight = portrait ? 230 : 172
     const nodes = [...document.querySelectorAll('.react-flow__node')].map((node) => {
       const rect = node.getBoundingClientRect()
       return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom }
     })
-    const candidates = [
-      { left: 32, top: 170 },
+    const candidates = portrait ? [
+      { left: 40, top: 250 },
+    ] : [
+      { left: 32, top: 140 },
       { left: 32, top: window.innerHeight - panelHeight - 32 },
-      { left: window.innerWidth - panelWidth - 32, top: 170 },
+      { left: window.innerWidth - panelWidth - 32, top: 140 },
       { left: window.innerWidth - panelWidth - 32, top: window.innerHeight - panelHeight - 32 },
     ]
     const overlaps = (candidate: { left: number; top: number }, node: { left: number; top: number; right: number; bottom: number }) =>
@@ -240,13 +247,13 @@ async function applyEvidence(
     const heading = document.createElement('div')
     heading.textContent = 'MODELLED RESULT'
     heading.style.cssText = [
-      'margin-bottom:10px', 'font-size:10px', 'font-weight:700',
+      `margin-bottom:${portrait ? '16px' : '10px'}`, `font-size:${portrait ? '16px' : '10px'}`, 'font-weight:700',
       'letter-spacing:.14em', 'color:var(--color-ink-faint)',
     ].join(';')
     panel.appendChild(heading)
 
     const cards = document.createElement('div')
-    cards.style.cssText = 'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px'
+    cards.style.cssText = `display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:${portrait ? '16px' : '10px'}`
 
     const colours = {
       default: 'var(--color-ink)',
@@ -257,14 +264,14 @@ async function applyEvidence(
     for (const item of items.slice(0, 3)) {
       const card = document.createElement('div')
       card.style.cssText = [
-        'min-width:0', 'padding:10px 11px', 'border:1px solid rgba(126,151,196,.18)',
+        'min-width:0', `padding:${portrait ? '16px' : '10px 11px'}`, 'border:1px solid rgba(126,151,196,.18)',
         'border-radius:10px', 'background:rgba(20,29,48,.72)',
       ].join(';')
 
       const label = document.createElement('div')
       label.textContent = item.label
       label.style.cssText = [
-        'font-size:11px', 'font-weight:650', 'letter-spacing:.08em',
+        `font-size:${portrait ? '15px' : '11px'}`, 'font-weight:650', 'letter-spacing:.08em',
         'text-transform:uppercase', 'color:var(--color-ink-dim)',
       ].join(';')
       card.appendChild(label)
@@ -272,7 +279,7 @@ async function applyEvidence(
       const value = document.createElement('div')
       value.textContent = item.value
       value.style.cssText = [
-        'margin-top:4px', 'font-size:22px', 'line-height:1.05',
+        `margin-top:${portrait ? '8px' : '4px'}`, `font-size:${portrait ? '32px' : '22px'}`, 'line-height:1.05',
         'font-weight:720', 'color:' + (colours[item.tone ?? 'default']),
       ].join(';')
       card.appendChild(value)
@@ -281,7 +288,7 @@ async function applyEvidence(
         const detail = document.createElement('div')
         detail.textContent = item.detail
         detail.style.cssText = [
-          'margin-top:5px', 'font-size:12px', 'line-height:1.35',
+          `margin-top:${portrait ? '8px' : '5px'}`, `font-size:${portrait ? '16px' : '12px'}`, 'line-height:1.35',
           'color:var(--color-ink-faint)',
         ].join(';')
         card.appendChild(detail)
@@ -290,7 +297,7 @@ async function applyEvidence(
     }
     panel.appendChild(cards)
     document.body.appendChild(panel)
-  }, evidence)
+  }, { items: evidence, portrait })
 }
 
 async function stepAndSettle(page: Page, ticks: number) {

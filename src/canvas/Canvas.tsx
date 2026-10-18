@@ -48,8 +48,8 @@ export function Canvas() {
   useEffect(() => {
     if (fitSignal === 0) return
     const timer = setTimeout(async () => {
-      await fitView({ duration: 0, padding: 0.08, maxZoom: 1 })
-      if (captureTopInset > 0 && wrapper.current) {
+      await fitView({ duration: 0, padding: 0.08, maxZoom: captureTopInset >= 300 ? 1.5 : 1 })
+      if (captureTopInset > 0 && captureTopInset < 300 && wrapper.current) {
         const { width, height } = wrapper.current.getBoundingClientRect()
         const inset = Math.min(captureTopInset, height * 0.25)
         const scale = (height - inset) / height
